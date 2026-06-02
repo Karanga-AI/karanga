@@ -47,7 +47,17 @@ These properties are normative consequences of the layout:
 - The first entry **MUST** be a file named `mimetype`, **stored without compression**,
   whose content is exactly `application/vnd.karanga.document+zip` with no trailing newline.
   This enables magic-byte file-type detection. *(Pattern borrowed from EPUB/OCF.)*
-- All other entries **MAY** be compressed (DEFLATE).
+- `manifest.json` **MUST** be stored without compression (`STORE`). This keeps the document
+  `title` and `description` as plain bytes inside the package, so standard filesystem search
+  (`grep`/`ripgrep`, OS indexers) can perform Tier-1 discovery on packed `.krg` files without a
+  Karanga reader. The manifest is tiny, so the cost is negligible.
+- All remaining entries (`spine.json`, `links.json`, node parts, media) **MAY** be compressed
+  (DEFLATE).
+- *Compression policy is a two-way door.* v0.1 is deliberately **lean**: titles and
+  descriptions are discoverable by standard tooling, node bodies stay compressed. A future
+  minor version MAY add an optional, uncompressed full-text part to make node **content**
+  grep-able (Appendix A6); because unknown entries are preserved on round-trip, that addition
+  is backward-compatible.
 - Entry paths **MUST** be UTF-8, use `/` as separator, and **MUST NOT** contain `..` or
   absolute paths.
 - The reserved top-level paths are `mimetype`, `manifest.json`, `spine.json`, `links.json`,
@@ -60,6 +70,19 @@ A `.krg` is the **packed** form (a single file, for storage and exchange). While
 implementation **MAY** operate on an **exploded** form — a directory containing the same
 parts — and repack on save. The two forms are byte-equivalent in their part contents. The
 exploded form is an implementation detail and is **not** part of the interchange contract.
+
+### 2.2 Filename convention
+
+A `.krg` file **SHOULD** be named with a sanitized form of its title followed by a short
+`doc_id` suffix, e.g. `Retry Policy [9f1c2e4a].krg`. This makes documents discoverable by
+title through the most basic tools (`ls`, `fd`, `fzf`, GUI file managers, OS filename search)
+with no reader involved.
+
+- The filename is a **convenience, not authoritative**. `manifest.doc_id` is the source of
+  truth; renaming a file (e.g. after a title change) **MUST NOT** affect document identity or
+  any `krg://` reference.
+- Implementations **MAY** rename the file when the title changes but **MUST NOT** rely on the
+  filename for correctness.
 
 ## 3. Identifiers
 
@@ -376,3 +399,7 @@ design is ratified.
 - **A3.** `doc_id`/`node_id`: UUID/ULID vs. content-addressed ids.
 - **A4.** Whether to admit a `table` node type in v0.1.
 - **A5.** Canonical-JSON dependency (RFC 8785) — acceptable as a hard requirement for hashing?
+- **A6.** Grep-friendly content (deferred, two-way door): whether/when to add an optional,
+  uncompressed full-text part — and a manifest flag to toggle it — so node **content** (not
+  just titles) is discoverable by standard search on packed files. Omitted from v0.1's lean
+  default; backward-compatible to add later (§2).
