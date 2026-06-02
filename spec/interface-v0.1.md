@@ -192,10 +192,9 @@ inventing a collection/index of its own:
 - **OS-native search via an importer plugin**, the `.docx`-faithful approach: ship a macOS
   **Spotlight importer** (`.mdimporter`) and a **Windows IFilter** so the OS indexer can read
   inside `.krg`. The index belongs to the OS, not to Karanga. *(post-v0.1 nice-to-have)* **[D]**
-- **Optional engine cache index.** For ranked/fuzzy results beyond what grep gives, the engine
-  MAY maintain a rebuildable cache index (e.g. Tantivy) scoped to a directory. It is a pure
-  accelerator — deletable and regenerable by scanning the files — never authoritative, never a
-  format artifact. Possibly unnecessary for v1 if grep + the OS index suffice. **[D]**
+- **Engine cache index (Tantivy, v0.1).** `search` (§3.6) is backed by a **Tantivy** index
+  scoped to a directory — rebuildable, deletable, regenerable by scanning the files, never
+  authoritative, never a format artifact. grep + the OS index remain the no-engine fallback.
 
 ## 7. Surfaces
 
@@ -217,12 +216,68 @@ The CLI and MCP server are thin renderings of the same operations over `krg-core
 - **MCP** returns the lean projections (§3) as tool results, with tool descriptions encoding
   the cheapest-first tiered access pattern.
 
-## 8. Open questions
+## 8. Karanga Markdown — the authoring & projection dialect
+
+Both directions of the text interface use one dialect. The **read projection** renders nodes
+to it (§3.3/§3.4), and **authoring** parses it back (`insert_node`/`update_node` content, §4).
+It is a strict **profile of CommonMark**, chosen so every construct maps 1:1 to the node/mark
+vocabulary — which is what makes render → parse → render **semantically lossless** (same nodes
+and marks out as in; not necessarily byte-identical).
+
+### 8.1 Block constructs
+
+| Karanga Markdown | Node (format §6.2) |
+|---|---|
+| `#` … `######` (ATX, levels 1–6) | `heading` (`attrs.level`); its section = following blocks until the next same-or-higher heading |
+| text block | `paragraph` |
+| `> …` | `blockquote` |
+| ` ```lang … ``` ` (fenced) | `code` (`attrs.language`) |
+| `- ` / `* ` (bullets), `1. ` (ordered) | `list` (`attrs.ordered`) + `list-item` children |
+| `---` / `***` (thematic break) | `divider` |
+| `![alt](src)` as a standalone block | `media` |
+
+- **ATX headings only** — no setext (`===`/`---`) headings; `---` is reserved for `divider`.
+- **Fenced code only** — no indented code blocks (ambiguous against list/quote nesting).
+- Heading-as-container sectioning (format §5.3) is derived from heading levels on parse and
+  re-expressed as heading levels on render.
+
+### 8.2 Inline constructs (within text-bearing nodes)
+
+| Karanga Markdown | Mark (format §7) |
+|---|---|
+| `**text**` | `strong` |
+| `*text*` | `em` |
+| `` `text` `` | `code` |
+| `~~text~~` | `strike` |
+| `[text](https://…)` | parametric `link` (`href`) |
+| `[text](krg://<doc>/<node>)` | parametric `ref` (internal link; mirrored to `links.json`) |
+
+- **Internal references use ordinary link syntax with a `krg://` href** — there is no custom
+  `[[wiki]]` syntax, so the dialect stays pure CommonMark. A link whose href parses as a
+  `krg://` URI becomes a `ref`; any other href becomes a `link`.
+- Inline HTML, autolinks, and reference-style (`[id]: url`) link definitions are **not** part
+  of the dialect.
+
+### 8.3 Granularity
+
+The dialect parses at two levels: a single block fragment (e.g. `update_node` on one paragraph
+or heading) and a multi-block document (`get_section`, whole-document render). On
+`update_node`, content that resolves to more than one block is an error unless the target is a
+container node. **[D: error vs. auto-wrap.]**
+
+### 8.4 Conformance
+
+- Render output MUST be parseable back to the originating nodes/marks (semantic round-trip).
+- Authoring input outside this profile MUST be rejected with a diagnostic rather than silently
+  coerced, so structure is deterministic. **[D: reject vs. best-effort coerce.]**
+- Implementations parse with a CommonMark parser (reference: `pulldown-cmark`) restricted to the
+  accepted constructs.
+
+## 9. Open questions
 
 - ~~**Q-a.** rev-on-writes — *resolved:* `rev` required for `update`/`move`/`delete`; no
   last-writer-wins path (§5).~~
 - **Q-b.** Ship the Spotlight importer / Windows IFilter in v0.1, or defer (§6)?
-- **Q-c.** Is an engine cache index (Tantivy) needed for v1, or do grep + the OS index cover it
-  until proven otherwise (§6)?
+- ~~**Q-c.** Engine cache index — *resolved:* Tantivy ships in v0.1, backing `search` (§6).~~
 - **Q-d.** The format-level grep-ability / compression-default decision (uncompressed manifest,
   optional full-text part, filename convention) is still pending in `format-v0.1.md`.

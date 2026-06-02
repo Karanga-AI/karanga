@@ -355,9 +355,28 @@ concurrency token (it is *not* stored inside the node part, to avoid self-refere
 
 - **Algorithm:** SHA-256 over the **canonical serialization** of the node part, formatted as
   `"sha256:" + lowercase-hex`.
-- **Canonical serialization:** UTF-8 JSON with object keys sorted lexicographically by
-  Unicode code point, no insignificant whitespace, and numbers in shortest round-trip form
-  (RFC 8785 / JCS is the reference). The `x` extension bag is included in the hash.
+- **Canonical serialization:** UTF-8 JSON with object keys sorted lexicographically by Unicode
+  code point and no insignificant whitespace. This is RFC 8785 / JCS **restricted to the
+  Karanga value domain**, a deliberate restriction (§9.1) that makes canonicalization simple,
+  reproducible, and dependency-free: within the domain, canonical form reduces to *sorted keys
+  + compact + UTF-8*. The `x` extension bag is included in the hash.
+
+### 9.1 The hashable value domain (no floating-point)
+
+To keep canonicalization free of the only genuinely hard part of RFC 8785 — ECMAScript
+floating-point number formatting — Karanga restricts the value domain of everything that is
+hashed (i.e. all document data):
+
+- **Numbers MUST be integers.** No floating-point values, no exponent notation. The node model
+  needs none (`heading.level` is the only numeric core attribute). Implementations **MUST**
+  reject a document containing a non-integer number in any node part, including `attrs` and
+  `x`.
+- **Object keys are ASCII** (`node_id`/`asset_id` charset plus the fixed field names), so
+  Unicode-code-point and UTF-16 key ordering coincide — there is no non-BMP key-sorting edge
+  case.
+- Within this domain, a conforming canonicalizer is byte-identical to a full RFC 8785
+  implementation, so third-party JCS libraries remain interoperable. The restriction lives only
+  in *what values are permitted*, not in the algorithm.
 - A writer performs an update as a **compare-and-swap**: it records a node's `hash` at read
   time and, before committing, confirms the on-disk node still hashes to that value; if not,
   the write is rejected as stale and the writer re-reads (§ optimistic concurrency, see
@@ -398,7 +417,9 @@ design is ratified.
   stay inline-only until v0.2?
 - **A3.** `doc_id`/`node_id`: UUID/ULID vs. content-addressed ids.
 - **A4.** Whether to admit a `table` node type in v0.1.
-- **A5.** Canonical-JSON dependency (RFC 8785) — acceptable as a hard requirement for hashing?
+- ~~**A5.** Canonical-JSON dependency — *resolved:* restrict the hashable value domain to
+  integers + ASCII keys (§9.1), making a vendored minimal canonicalizer byte-identical to RFC
+  8785 with no external dependency.~~
 - **A6.** Grep-friendly content (deferred, two-way door): whether/when to add an optional,
   uncompressed full-text part — and a manifest flag to toggle it — so node **content** (not
   just titles) is discoverable by standard search on packed files. Omitted from v0.1's lean

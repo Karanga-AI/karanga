@@ -93,10 +93,42 @@ pub trait Store {
   satisfies "extract one node without parsing others"). Read-optimized.
 - **`DirStore`** — an exploded working directory. Read + write; the form edits run against.
 
-**Reads** may use either store directly. **Writes** require a `DirStore`: given a packed file,
-`edit` explodes it into a working directory (a temp dir or a sidecar `.krg.work/`), mutates,
-then repacks. **[D: explode-to-temp-and-repack-per-session vs. keep a persistent exploded
-working copy while a document is "open".]**
+**Reads** may use either store directly. **Writes** always go through a `DirStore` (a working
+copy); a packed `.krg` is never mutated in place. See §4.1.
+
+### 4.1 Working copies & the session model (C-a, resolved)
+
+All writes operate on a **working copy** (an exploded `DirStore`). One mechanism, two lifetimes:
+
+- **Ephemeral session (one-shot).** A single CLI/agent write opens a working copy, applies the
+  change, repacks, and tears down. Stateless from the caller's view.
+- **Live session (interactive / shared).** The editor — or an agent doing many edits — opens a
+  working copy that persists. Edits are per-node atomic writes on the exploded parts; **repack
+  happens on save/close + an autosave interval, not per edit.** This is the only model that
+  makes WYSIWYG editing and concurrent human+agent writing tractable: explode-per-edit would
+  repack the whole archive on every keystroke and would lose writes when two repacks race.
+
+**Store resolution.** For any operation the engine resolves the active store for a document: a
+live working copy if one is open (it is authoritative), otherwise the packed `.krg` (`ZipStore`
+for reads; an ephemeral working copy for writes). A read never returns stale content while a
+session is open.
+
+**Coordination is filesystem-based — no daemon.** A live working copy is discoverable and
+guarded by a lock/owner marker; concurrent writers (editor + agent) share the one working copy,
+serialize per node via the §6 CAS, and watch the directory to reflect each other's edits live.
+Repack is guarded by the brief advisory lock. The shared working directory *is* the
+coordination substrate FR-21 assumes ("writers share a filesystem") — consistent with the
+no-hub/no-daemon decision.
+
+**Location.** A live working copy lives in a cache directory keyed by `doc_id`
+(`${cache}/karanga/work/<doc_id>/`), found deterministically by reading the target file's
+uncompressed manifest. Keeps the user's folder clean (just the `.krg`); needs no collection or
+marker concept. **[D: cache-dir keyed by doc_id vs. a co-located `.work/` sidecar.]**
+
+**Staleness & recovery.** While a live session is open the packed `.krg` is stale until save;
+the autosave interval bounds this (same tradeoff as `.docx`). A working copy whose owner is
+dead (crash) is detected on next open and recovered — repacked if it has unsaved changes, else
+discarded.
 
 ## 5. Read & render flow
 
@@ -134,8 +166,9 @@ write verb ─► ensure DirStore (explode if packed)
 - **Projection upkeep:** every node write updates that node's spine entry (`type`/`hash`/
   `label`) so the index stays consistent (format §5.2). Inline `ref` marks are mirrored into
   `links.json` (format §7.2/§8.3).
-- **Authoring inverse:** `insert_node`/`update_node` accept Markdown-ish content; `render`
-  parses it into `Run`/`Mark`. Round-trips with the read projection.
+- **Authoring inverse:** `insert_node`/`update_node` accept content in **Karanga Markdown**
+  (the CommonMark subset, interface spec §8); `render` parses it into `Run`/`Mark`. Render and
+  parse are semantic inverses, so the read projection round-trips (C-e, resolved).
 
 ## 7. Search & scope
 
@@ -143,15 +176,22 @@ write verb ─► ensure DirStore (explode if packed)
 - **`find_documents`/`search`/cross-doc `get_links`** take a `Scope` (directory). `scope`
   enumerates `.krg` files and, for Tier-1, reads their (uncompressed) manifests — which, being
   `STORE`d, are also reachable by external `grep`/`rg`. No corpus/vault object exists.
-- **`search` (content):** v0.1 default scans node bodies across scoped files (acceptable at
-  local scale). A `tantivy` **feature flag** adds a rebuildable, path-scoped cache index for
-  ranked/fuzzy results — pure accelerator, never authoritative. **[D: ship the index in v0.1
-  or rely on scanning + the OS index?]**
+- **`search` (content):** backed by **Tantivy in v0.1** (C-b, resolved) for ranked/fuzzy
+  results, built as a **rebuildable, path-scoped cache index** — a pure accelerator, never
+  authoritative, regenerable by scanning the scoped files. (Kept behind a Cargo feature so
+  minimal/embedded builds can drop it, but **enabled by default**.) A plain scan remains the
+  fallback when the index is absent.
 
 ## 8. Cross-cutting
 
-- **Sync core.** `krg-core` is synchronous; file I/O at local scale doesn't need async. `krg-mcp`
-  wraps calls on a threadpool if it needs concurrency; the CLI is naturally sync. **[D]**
+- **Sync core (C-c, resolved).** `krg-core` is synchronous. Local file I/O gains nothing from
+  async (OS file reads are not truly async; tokio's `fs` uses a blocking pool regardless), and
+  sync keeps the library lean and cleanly bindable (WASM is single-threaded; async over
+  FFI/WASM is painful). Consumers adapt trivially:
+  - `krg-mcp`, if it runs on an async runtime, wraps calls in `spawn_blocking`.
+  - The CLI is naturally synchronous.
+  - Internal parallelism (scanning many files for `find_documents`/`search`) uses **data
+    parallelism (`rayon`)**, not async I/O — the right tool for a CPU/disk-bound fan-out.
 - **Errors vs outcomes.** `Result<_, Error>` for hard failures (IO, corrupt archive, schema
   invalid). `Stale` is a normal `WriteOut` variant, not an `Error`.
 - **Validation.** `validate` runs the format §11 checks; `edit` runs a cheap subset
@@ -163,7 +203,7 @@ write verb ─► ensure DirStore (explode if packed)
 |---|---|---|
 | ZIP | `zip` | Random-access read, `STORE`/`DEFLATE` control for the compression policy. |
 | JSON | `serde` + `serde_json` | Model (de)serialization. |
-| Canonical JSON | JCS impl or in-house | RFC 8785 for the hash input (format §9, Appendix A5). **[D]** |
+| Canonical JSON | **vendored (~30 LOC, no dep)** (C-d, resolved) | Sorted keys + compact + UTF-8 over the no-float / ASCII-key domain (format §9.1); byte-identical to RFC 8785 for that domain. |
 | Hash | `sha2` | SHA-256. |
 | IDs | `uuid` (+ `ulid`?) | `doc_id` UUIDv4; node ids ULID/base32. |
 | Markdown | `pulldown-cmark` (parse) + small renderer | Read projection out, authoring parse in. |
@@ -171,10 +211,18 @@ write verb ─► ensure DirStore (explode if packed)
 
 ## 10. Open questions
 
-- **C-a.** Write working-copy model: explode-to-temp per write vs. a persistent exploded
-  "open document" the editor and engine share (§4).
-- **C-b.** Ship the `tantivy` index in v0.1, or scanning + OS index only (§7)?
-- **C-c.** Sync-only core, or expose async entry points for `krg-mcp` (§8)?
-- **C-d.** Canonical-JSON: pull an RFC 8785 crate or vendor a minimal JCS (§9 / format A5)?
-- **C-e.** Markdown dialect for the authoring/round-trip projection — CommonMark subset, and
-  how marks/`ref`s map to it.
+- ~~**C-a.** Working-copy model — *resolved:* session model, persistent live working copy for
+  interactive/shared editing, ephemeral for one-shot; filesystem-coordinated, no daemon (§4.1).
+  Sub-decision still open: working-copy location (cache-dir vs co-located sidecar).~~
+- ~~**C-b.** Tantivy index — *resolved:* ship in v0.1, default-on, as a rebuildable path-scoped
+  cache (§7).~~
+- ~~**C-c.** Core concurrency — *resolved:* sync core; consumers use `spawn_blocking`/`rayon`
+  (§8).~~
+- ~~**C-d.** Canonical JSON — *resolved:* vendored minimal canonicalizer over the no-float
+  domain (§9 / format §9.1).~~
+- ~~**C-e.** Authoring/projection dialect — *resolved:* Karanga Markdown, a CommonMark subset
+  with `krg://`-href refs (interface spec §8).~~
+
+Remaining sub-decisions: working-copy location (§4.1, cache-dir vs sidecar); whether a
+multi-block `update_node` fragment is an error on a non-container (interface §8.3); reject vs.
+coerce out-of-dialect authoring input (interface §8.4).
