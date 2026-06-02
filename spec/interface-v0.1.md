@@ -171,7 +171,10 @@ Surfacing format §9 and REQUIREMENTS FR-20…FR-24:
   compare-and-swap: if the on-disk node still matches `rev`, the write applies and a new `rev`
   is returned; otherwise it returns `{ conflict: "stale", current_rev, current }` and the agent
   re-reads and retries. No lease, heartbeat, or daemon. *(FR-23)*
-- Omitting `rev` on a write is a **last-writer-wins** commit; the engine MAY warn. **[D]**
+- **`rev` is required** for mutations of an existing node — `update_node`, `move_node`,
+  `delete_node`. Creation ops (`create_document`, `insert_node`, `add_media`) need no `rev`;
+  link set-ops (`set_link`/`remove_link`) are idempotent and need none. There is **no
+  last-writer-wins path** — a missing required `rev` is rejected, not silently applied.
 - Edits to different nodes never conflict (FR-22); only same-node clashes surface here.
 
 ## 6. Cross-file search & discovery — the file-format model
@@ -216,8 +219,8 @@ The CLI and MCP server are thin renderings of the same operations over `krg-core
 
 ## 8. Open questions
 
-- **Q-a.** `last-writer-wins` on a missing `rev` (§5) — warn, or require `rev` on all mutating
-  writes?
+- ~~**Q-a.** rev-on-writes — *resolved:* `rev` required for `update`/`move`/`delete`; no
+  last-writer-wins path (§5).~~
 - **Q-b.** Ship the Spotlight importer / Windows IFilter in v0.1, or defer (§6)?
 - **Q-c.** Is an engine cache index (Tantivy) needed for v1, or do grep + the OS index cover it
   until proven otherwise (§6)?
