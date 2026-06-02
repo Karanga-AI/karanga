@@ -33,9 +33,10 @@ krg-convert ─┘   (+ optional Tantivy index, feature-gated)
 |---|---|
 | `container` | ZIP pack/unpack, exploded-dir I/O, compression policy (manifest `STORE`), random-access single-entry extraction, atomic part writes, the `Store` abstraction (§4). |
 | `model` | Types: `Document`, `Manifest`, `Spine`, `Node`, `NodeContent`, inline `Run`/`Mark`, `Link`, `Media`. Serde to/from JSON parts. |
+| `schema` | The base-schema type descriptors + the document `types` registry (format §6.2–§6.4); resolves a type's content model and child rules. The engine is **schema-driven** — `validate`, `render`, and `edit` consult it rather than matching a fixed type enum. |
 | `id` | `doc_id`/`node_id`/`asset_id` generation; `krg://` ref parse/format. |
 | `hash` | RFC 8785 canonical JSON + SHA-256; `Rev` derivation (12-hex truncation). |
-| `render` | Node/section/document → Markdown/plain-text projections (read side); Markdown → `Run`/`Mark` (write side). |
+| `render` | Schema-driven projection: rich render for known types, **generic structural render by content model** for declared custom types (read side); Karanga Markdown → `Run`/`Mark`/children (write side). |
 | `query` | Read verbs: `find_documents`, `get_outline`, `get_node`, `get_section`, `find_nodes`, `search`, `get_links`. |
 | `edit` | Write verbs with CAS: create/insert/update/move/delete, link + media ops; spine/links projection maintenance; repack. |
 | `validate` | Conformance checks (format §11). |
@@ -51,11 +52,14 @@ pub struct Scope(PathBuf);       // a file or a directory (recursive)
 
 pub struct Node {
     pub id: NodeId,
-    pub ty: NodeType,            // Heading{level}, Paragraph, Blockquote, Code{lang}, List{ordered}, ListItem, Media, Divider, Ext(String)
-    pub content: NodeContent,    // Inline(Vec<Run>) | Code(String) | MediaRef(..) | Empty
+    pub ty: TypeName,            // base ("heading", "table") or namespaced custom ("acme:callout")
+    pub content: NodeContent,    // Inline(Vec<Run>) | Raw(String) | Empty  — kind set by the type's descriptor
     pub attrs: Map,
     pub ext: Map,                // the `x` bag, preserved verbatim
 }
+// Node shape is validated against a TypeDescriptor (schema module), not a fixed enum:
+pub struct TypeDescriptor { pub content: ContentModel, pub children: Option<ChildRule>, pub attrs: AttrSchema }
+// ContentModel = Empty | Inline | Raw ;  children present ⇒ container (spine holds them)
 
 pub struct Run { pub text: String, pub marks: Vec<MarkToken> }   // MarkToken = Simple(&str) | Key(String)
 
@@ -123,7 +127,8 @@ no-hub/no-daemon decision.
 **Location.** A live working copy lives in a cache directory keyed by `doc_id`
 (`${cache}/karanga/work/<doc_id>/`), found deterministically by reading the target file's
 uncompressed manifest. Keeps the user's folder clean (just the `.krg`); needs no collection or
-marker concept. **[D: cache-dir keyed by doc_id vs. a co-located `.work/` sidecar.]**
+marker concept. *(Resolved: cache-dir keyed by `doc_id`, over a co-located `.work/` sidecar —
+chosen to avoid cluttering and `.gitignore`-polluting the user's folders.)*
 
 **Staleness & recovery.** While a live session is open the packed `.krg` is stale until save;
 the autosave interval bounds this (same tradeoff as `.docx`). A working copy whose owner is
@@ -206,7 +211,7 @@ write verb ─► ensure DirStore (explode if packed)
 | Canonical JSON | **vendored (~30 LOC, no dep)** (C-d, resolved) | Sorted keys + compact + UTF-8 over the no-float / ASCII-key domain (format §9.1); byte-identical to RFC 8785 for that domain. |
 | Hash | `sha2` | SHA-256. |
 | IDs | `uuid` (+ `ulid`?) | `doc_id` UUIDv4; node ids ULID/base32. |
-| Markdown | `pulldown-cmark` (parse) + small renderer | Read projection out, authoring parse in. |
+| Markdown | `pulldown-cmark` (parse, **GFM tables on**) + small renderer | Karanga Markdown subset incl. GFM tables, nested lists, and the `:::` directive for custom block types (interface §8). |
 | Full-text (opt) | `tantivy` | Feature-gated; §7. |
 
 ## 10. Open questions
@@ -223,6 +228,6 @@ write verb ─► ensure DirStore (explode if packed)
 - ~~**C-e.** Authoring/projection dialect — *resolved:* Karanga Markdown, a CommonMark subset
   with `krg://`-href refs (interface spec §8).~~
 
-Remaining sub-decisions: working-copy location (§4.1, cache-dir vs sidecar); whether a
-multi-block `update_node` fragment is an error on a non-container (interface §8.3); reject vs.
-coerce out-of-dialect authoring input (interface §8.4).
+All sub-decisions are now resolved: working-copy location → cache-dir keyed by `doc_id`
+(§4.1); multi-block `update_node` on a non-container → error (interface §8.3); out-of-dialect
+authoring input → reject with a diagnostic (interface §8.4).

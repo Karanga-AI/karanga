@@ -135,6 +135,7 @@ Document-level metadata. Read alone, it answers Tier-1 discovery.
 | `modified` | SHOULD | string | RFC 3339 timestamp. |
 | `media_mode` | MUST | string | `"embedded"` or `"referenced"` (§8). |
 | `authors` | MAY | array | Each `{ "name": string, "x"?: object }`. |
+| `types` | MAY | object | Type-descriptor registry for the non-base node types this document uses (§6.4). Absent when the document uses only base-schema types. |
 | `x` | MAY | object | Namespaced extension bag (§10). |
 
 ## 5. `spine.json` — structure and index
@@ -198,12 +199,12 @@ reads.
 - `type`, `hash`, and `label` are a **denormalized projection** of the node. Writers **MUST**
   keep them consistent with the node part on every write. *(Deliberate index denormalization
   — the cost of single-read Tier-1/2. Readers treat the node part as the source of truth if
-  they ever disagree, and **SHOULD** flag the document as needing reindex.)* **[D]**
+  they ever disagree, and **SHOULD** flag the document as needing reindex.)*
 
 ### 5.3 Sections
 
 A **section** is a `heading` node together with its `children` subtree. There is no separate
-"section" node type; the heading *is* the section's root and label. **[D]**
+"section" node type; the heading *is* the section's root and label.
 
 - Content appearing before any heading is held as direct children of `root` (a preamble).
 - Heading **level** (`attrs.level`, §6.2) is a presentation attribute and is independent of
@@ -222,7 +223,7 @@ shape of `content` and `attrs` is type-specific.
 {
   "id": "p_1",
   "type": "paragraph",
-  "content": [ /* inline runs, a string, or a typed payload */ ],
+  "content": [ /* inline runs (§7), a raw string, or omitted — per the type's content model (§6.2) */ ],
   "attrs": {},
   "x": {}
 }
@@ -236,28 +237,91 @@ shape of `content` and `attrs` is type-specific.
 | `attrs` | MAY | object | Type-specific attributes. |
 | `x` | MAY | object | Namespaced extension bag. |
 
-### 6.2 Core node types (v0.1)
+### 6.2 Content models and the base schema
 
-| `type` | `content` | `attrs` | Container? |
+The node-type vocabulary is **schema-driven and open**, not a closed enum. Every type is
+described by a **type descriptor** (§6.3) with two independent axes: the node's own **content**
+payload, and whether it is a **container** (has spine children).
+
+The **base schema** is the set of descriptors built into v0.1. Bare type names are reserved for
+the base schema; additional types are namespaced and document-declared (§6.4).
+
+| `type` | content | children | `attrs` |
 |---|---|---|---|
-| `heading` | inline runs (§7) | `{ "level": 1–6 }` | **Yes** (owns its section) |
-| `paragraph` | inline runs | — | No |
-| `blockquote` | inline runs | — | No (v0.1) |
-| `code` | string (raw code) | `{ "language"?: string }` | No |
-| `list` | — | `{ "ordered": bool }` | **Yes** (children are `list-item`) |
-| `list-item` | inline runs | — | **Yes** (MAY contain block children) |
-| `media` | — | `{ "media_kind", "asset"|"src", "alt"?, "caption"? }` (§8) | No |
-| `divider` | — | — | No |
+| `heading` | inline | `block` | `{ "level": 1–6 }` |
+| `paragraph` | inline | — | — |
+| `blockquote` | empty | `block` | — |
+| `code` | raw | — | `{ "language"?: string }` |
+| `list` | empty | `list-item` | `{ "ordered": bool }` |
+| `list-item` | empty | `block` | — |
+| `table` | empty | `table-row` | `{ "align"?: ("left"\|"center"\|"right")[] }` |
+| `table-row` | empty | `table-cell` | — |
+| `table-cell` | inline | — | `{ "header"?: bool }` |
+| `media` | empty | — | `{ "media_kind", "asset"\|"src", "alt"?, "caption"? }` (§8) |
+| `divider` | empty | — | — |
 
-- A **container** node is one whose `children` appear in the spine (§5). Its node part does
-  not duplicate its children; the spine holds the structure.
-- Readers encountering an **unknown** `type` **MUST** preserve it on round-trip and **SHOULD**
-  render a visible placeholder rather than dropping content (§10).
+- A **container** node is one with `children`; its children live in the spine (§5), not in the
+  node part.
+- **`block`** (a child shorthand) = any block-level type: `heading`, `paragraph`, `blockquote`,
+  `code`, `list`, `table`, `media`, `divider`, or a custom block type (§6.4).
+- **Nested lists** = a `list-item` with a `list` child; **multi-block** quotes/items = a
+  `blockquote`/`list-item` with several block children. Both fall out of the generic container
+  model — no special casing. A simple item or quote wraps its text in a `paragraph` child, so
+  that only inline-content types carry runs directly.
+
+### 6.3 Type descriptors
+
+A descriptor declares a type's shape:
+
+```json
+{
+  "content": "empty" | "inline" | "raw",
+  "children": [ "<type>", … ] | "block",
+  "attrs":    { "<key>": "<value-domain>", … }
+}
+```
+
+- **`content`** — the node's own payload: `empty` (none), `inline` (an array of runs, §7), or
+  `raw` (an opaque string, e.g. code).
+- **`children`** — allowed child types (a list, or the `block` shorthand). Present ⇒ the type is
+  a container. A type MAY be *both* inline-content and a container (e.g. `heading`: an inline
+  title plus a block section).
+- **`attrs`** — permitted attributes and their value domains. Values obey the no-float domain
+  (§9.1): integers, strings, booleans, arrays, objects.
+
+### 6.4 Custom node types
+
+The vocabulary is open. A document MAY use types beyond the base schema; each such type:
+
+- **MUST** be namespaced with a vendor prefix and colon, e.g. `acme:callout` (bare names are
+  reserved for the base schema);
+- **MUST** be declared in the manifest `types` registry, mapping the name to its descriptor
+  (§6.3), optionally with advisory render hints:
+
+```json
+"types": {
+  "acme:callout": {
+    "content": "empty",
+    "children": "block",
+    "attrs": { "variant": "string" },
+    "render": { "hint": "callout" }
+  }
+}
+```
+
+- A reader **MUST** validate and **structurally render** a declared custom type from its
+  descriptor — a container renders its children in reading order; an inline type renders its
+  runs — even when it cannot render the type *richly*. A client that recognizes the type renders
+  it natively.
+- A type that is neither in the base schema nor declared in `types` makes the document
+  **invalid**. A `.krg` therefore always carries enough to render its own structure
+  (self-describing).
+- `render` hints are advisory; the format never depends on them.
 
 ## 7. Inline content model
 
-Text-bearing nodes (`heading`, `paragraph`, `blockquote`, `list-item`) carry `content` as an
-ordered array of **runs**. **[D]**
+Nodes whose content model is `inline` (`heading`, `paragraph`, `table-cell`, and any custom
+inline type) carry `content` as an ordered array of **runs**.
 
 ```json
 "content": [
@@ -302,7 +366,7 @@ referenced by key:
 - `link` — `{ "type": "link", "href": string }`.
 - `ref` — `{ "type": "ref", "target": <krg:// reference> }`. An inline reference to another
   node/document. Every `ref` mark **MUST** have a corresponding entry in `links.json` (§8.3);
-  the inline mark is for rendering, the link record is for the queryable graph. **[D]**
+  the inline mark is for rendering, the link record is for the queryable graph.
 
 ## 8. Media
 
@@ -387,9 +451,12 @@ hashed (i.e. all document data):
 - **Spec version** (`manifest.krg`) is `MAJOR.MINOR`. A reader **MUST** reject a document
   whose `MAJOR` it does not implement. A reader **MUST** accept a higher `MINOR` of a `MAJOR`
   it implements, ignoring unknown additions but preserving them on round-trip.
-- **Extension node types and mark types** are namespaced with a vendor prefix and a colon,
-  e.g. `acme:callout`. Unknown extension types **MUST** be preserved and **SHOULD** render as
-  a placeholder.
+- **Extension node types** are namespaced (`acme:callout`) and declared in the manifest `types`
+  registry with a descriptor (§6.4); readers render them structurally from the descriptor. The
+  vocabulary grows by **schema, not by spec version** — adding a custom type needs no `MAJOR`/
+  `MINOR` bump. Extension **mark types** are likewise namespaced. A non-base type that is *not*
+  declared is invalid (§6.4); declared-but-unrecognized types are preserved and rendered
+  structurally.
 - **`x` bags** (on manifest, nodes, authors, …) hold arbitrary namespaced data. Keys
   **SHOULD** be reverse-DNS or vendor-prefixed. Readers **MUST** preserve unknown `x` content.
 
@@ -411,12 +478,21 @@ design is ratified.
 
 ## Appendix A — open design questions
 
-- **A1.** Spine denormalization (§5.2): accept the writer sync obligation, or normalize and
-  read heading parts for the outline?
-- **A2.** Should `blockquote` and `list-item` be allowed to contain block children in v0.1, or
-  stay inline-only until v0.2?
-- **A3.** `doc_id`/`node_id`: UUID/ULID vs. content-addressed ids.
-- **A4.** Whether to admit a `table` node type in v0.1.
+- ~~**A1.** Spine denormalization — *resolved:* accept the writer sync obligation; node part is
+  source-of-truth on disagreement (§5.2).~~
+- ~~**A2.** Block children in `blockquote`/`list-item` — *resolved (revised):* **supported in
+  v0.1** via the generic container model — nested lists and multi-block quotes/items are
+  first-class (§6.2). Supersedes the earlier "inline-only / flat lists" decision, once the
+  type system became schema-driven.~~
+- ~~**A3.** ID strategy — *resolved:* UUID `doc_id` + ULID `node_id`. Not content-addressed:
+  content-addressed ids change on every edit, which would break stable refs/links (§3).~~
+- ~~**A4.** `table` node type — *resolved (revised):* **included in the v0.1 base schema** as
+  `table`/`table-row`/`table-cell` (§6.2) — expressible because types are schema-defined.
+  Supersedes the earlier "defer to v0.2" decision.~~
+- ~~**A7.** Extensible type system — *resolved:* the node-type vocabulary is schema-driven and
+  open (§6.2–§6.4): a generic envelope + per-type descriptors + a document `types` registry,
+  with structural rendering of declared-but-unrecognized types. New structured content is added
+  by schema, not spec version.~~
 - ~~**A5.** Canonical-JSON dependency — *resolved:* restrict the hashable value domain to
   integers + ASCII keys (§9.1), making a vendored minimal canonicalizer byte-identical to RFC
   8785 with no external dependency.~~

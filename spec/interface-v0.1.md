@@ -185,13 +185,14 @@ inventing a collection/index of its own:
 - **The filesystem is the collection.** Folders are the only grouping. Cross-document
   operations take a directory `scope`; there is no vault, registry, or marker directory.
 - **Standard tools do cross-file search.** `grep`/`rg`/`fd` and the OS indexers
-  (Spotlight, Windows Search) are the primary mechanism. To make this work on packed `.krg`
-  files, the format provides grep-ability provisions — an uncompressed `manifest.json`, an
-  optional uncompressed full-text part, and a title-bearing filename convention (to be
-  finalized in `format-v0.1.md`; pending the compression-default decision). **[D]**
+  (Spotlight, Windows Search) are the primary mechanism. The format makes this work on packed
+  `.krg` files via the **lean** grep-ability provisions (format §2): an uncompressed
+  `manifest.json` (titles/descriptions grep-able) and the title-bearing filename convention
+  (§2.2). The optional uncompressed full-text part for *content* grep is deferred (format A6).
 - **OS-native search via an importer plugin**, the `.docx`-faithful approach: ship a macOS
   **Spotlight importer** (`.mdimporter`) and a **Windows IFilter** so the OS indexer can read
-  inside `.krg`. The index belongs to the OS, not to Karanga. *(post-v0.1 nice-to-have)* **[D]**
+  inside `.krg`. The index belongs to the OS, not to Karanga. **Deferred to post-v0.1** — grep
+  + Tantivy cover discovery for v0.1.
 - **Engine cache index (Tantivy, v0.1).** `search` (§3.6) is backed by a **Tantivy** index
   scoped to a directory — rebuildable, deletable, regenerable by scanning the files, never
   authoritative, never a format artifact. grep + the OS index remain the no-engine fallback.
@@ -230,14 +231,20 @@ and marks out as in; not necessarily byte-identical).
 |---|---|
 | `#` … `######` (ATX, levels 1–6) | `heading` (`attrs.level`); its section = following blocks until the next same-or-higher heading |
 | text block | `paragraph` |
-| `> …` | `blockquote` |
+| `> …` (may contain multiple blocks) | `blockquote` → block children |
 | ` ```lang … ``` ` (fenced) | `code` (`attrs.language`) |
-| `- ` / `* ` (bullets), `1. ` (ordered) | `list` (`attrs.ordered`) + `list-item` children |
+| `- ` / `* ` (bullets), `1. ` (ordered); **nestable** | `list` (`attrs.ordered`) → `list-item` → block children |
+| GFM table (`\| a \| b \|` + `\|---\|---\|`) | `table` → `table-row` → `table-cell` (header row → `attrs.header`; `:---:` → `attrs.align`) |
 | `---` / `***` (thematic break) | `divider` |
 | `![alt](src)` as a standalone block | `media` |
+| `:::type{attrs} … :::` (directive) | a **custom** block type declared in `types` (§8.5) |
 
 - **ATX headings only** — no setext (`===`/`---`) headings; `---` is reserved for `divider`.
 - **Fenced code only** — no indented code blocks (ambiguous against list/quote nesting).
+- **Nested lists and multi-block items/quotes** map directly to the generic container model
+  (format §6.2): an indented sub-list becomes a `list` child of the enclosing `list-item`; a
+  simple item/quote wraps its text in a `paragraph`.
+- GFM tables require the parser's table extension enabled (e.g. `pulldown-cmark` GFM options).
 - Heading-as-container sectioning (format §5.3) is derived from heading levels on parse and
   re-expressed as heading levels on render.
 
@@ -262,22 +269,43 @@ and marks out as in; not necessarily byte-identical).
 
 The dialect parses at two levels: a single block fragment (e.g. `update_node` on one paragraph
 or heading) and a multi-block document (`get_section`, whole-document render). On
-`update_node`, content that resolves to more than one block is an error unless the target is a
-container node. **[D: error vs. auto-wrap.]**
+`update_node`, content that resolves to more than one block **is an error** (not auto-wrapped)
+unless the target is a container node — keeping the structural effect of an edit explicit.
 
 ### 8.4 Conformance
 
 - Render output MUST be parseable back to the originating nodes/marks (semantic round-trip).
-- Authoring input outside this profile MUST be rejected with a diagnostic rather than silently
-  coerced, so structure is deterministic. **[D: reject vs. best-effort coerce.]**
+- Authoring input outside this profile MUST be **rejected with a diagnostic** (never silently
+  coerced), so the resulting structure is deterministic.
 - Implementations parse with a CommonMark parser (reference: `pulldown-cmark`) restricted to the
   accepted constructs.
+
+### 8.5 Custom block types (directives)
+
+The base-schema block and inline constructs above cover the base types. **Custom** block types
+(format §6.4) that don't have native Markdown syntax are authored with one generic **directive**
+construct (MyST-style):
+
+```
+:::acme:callout{variant="warn"}
+Body blocks go here — parsed as the directive type's children.
+:::
+```
+
+- The directive name MUST be a type declared in the document's `types` registry (§6.4);
+  `{…}` carries `attrs` (no-float domain). The fenced body is parsed as the type's child blocks.
+- Rendering is the inverse: a declared custom container renders back to its directive form;
+  a client that knows the type MAY render it natively instead.
+- Custom **inline** types beyond the base marks are out of scope for the v0.1 dialect; such
+  content is authored structurally, not through text. **[D]**
 
 ## 9. Open questions
 
 - ~~**Q-a.** rev-on-writes — *resolved:* `rev` required for `update`/`move`/`delete`; no
   last-writer-wins path (§5).~~
-- **Q-b.** Ship the Spotlight importer / Windows IFilter in v0.1, or defer (§6)?
+- ~~**Q-b.** OS importer plugins — *resolved:* deferred to post-v0.1 (§6).~~
 - ~~**Q-c.** Engine cache index — *resolved:* Tantivy ships in v0.1, backing `search` (§6).~~
-- **Q-d.** The format-level grep-ability / compression-default decision (uncompressed manifest,
-  optional full-text part, filename convention) is still pending in `format-v0.1.md`.
+- ~~**Q-d.** Compression default — *resolved:* lean (uncompressed manifest + filename
+  convention; full-text part deferred, format §2 / A6).~~
+
+*All interface-level open questions are resolved as of this revision.*
