@@ -8,6 +8,7 @@
 #![allow(dead_code, unused_variables, unused_imports)]
 
 pub mod container;
+pub mod document;
 pub mod edit;
 pub mod error;
 pub mod hash;
