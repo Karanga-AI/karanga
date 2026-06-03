@@ -6,7 +6,10 @@
 
 use std::collections::BTreeMap;
 
-use crate::model::{MarkDef, Node, NodeContent, Value};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+
+use crate::id::Ref;
+use crate::model::{MarkDef, Node, NodeContent, Run, Value};
 use crate::Result;
 
 /// Render a single node to Karanga Markdown.
@@ -48,9 +51,69 @@ pub fn render_document() -> Result<String> {
     unimplemented!("document render")
 }
 
-/// Parse Karanga Markdown into nodes (authoring inverse) — later slice.
+/// Parse Karanga Markdown into nodes (block-level authoring inverse) — later slice.
 pub fn parse_markdown(_md: &str) -> Result<Vec<Node>> {
-    unimplemented!("Karanga Markdown parse")
+    unimplemented!("block-level Karanga Markdown parse")
+}
+
+/// Parse the inline content of a single text-bearing block (paragraph, heading,
+/// table-cell) into runs + a node-local mark table. Uses `pulldown-cmark`;
+/// block structure is ignored (the caller supplies inline content).
+pub fn parse_inline(md: &str) -> (Vec<Run>, BTreeMap<String, MarkDef>) {
+    let mut opts = Options::empty();
+    opts.insert(Options::ENABLE_STRIKETHROUGH);
+    let mut runs = Vec::new();
+    let mut marks = BTreeMap::new();
+    let mut active: Vec<String> = Vec::new();
+    let mut link: Option<String> = None;
+    let mut ctr = 0u32;
+
+    for ev in Parser::new_ext(md, opts) {
+        match ev {
+            Event::Start(Tag::Strong) => active.push("strong".into()),
+            Event::End(TagEnd::Strong) => pop_mark(&mut active, "strong"),
+            Event::Start(Tag::Emphasis) => active.push("em".into()),
+            Event::End(TagEnd::Emphasis) => pop_mark(&mut active, "em"),
+            Event::Start(Tag::Strikethrough) => active.push("strike".into()),
+            Event::End(TagEnd::Strikethrough) => pop_mark(&mut active, "strike"),
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                ctr += 1;
+                let key = format!("m{ctr}");
+                let def = if dest_url.starts_with("krg://") {
+                    MarkDef { ty: "ref".into(), href: None, target: Some(Ref(dest_url.to_string())) }
+                } else {
+                    MarkDef { ty: "link".into(), href: Some(dest_url.to_string()), target: None }
+                };
+                marks.insert(key.clone(), def);
+                link = Some(key);
+            }
+            Event::End(TagEnd::Link) => link = None,
+            Event::Code(s) => push_run(&mut runs, s.to_string(), &active, Some("code"), &link),
+            Event::Text(s) => push_run(&mut runs, s.to_string(), &active, None, &link),
+            Event::SoftBreak | Event::HardBreak => {
+                push_run(&mut runs, " ".to_string(), &active, None, &link)
+            }
+            _ => {}
+        }
+    }
+    (runs, marks)
+}
+
+fn pop_mark(active: &mut Vec<String>, m: &str) {
+    if let Some(p) = active.iter().rposition(|x| x == m) {
+        active.remove(p);
+    }
+}
+
+fn push_run(runs: &mut Vec<Run>, text: String, active: &[String], extra: Option<&str>, link: &Option<String>) {
+    let mut marks: Vec<String> = active.to_vec();
+    if let Some(e) = extra {
+        marks.push(e.to_string());
+    }
+    if let Some(k) = link {
+        marks.push(k.clone());
+    }
+    runs.push(Run { text, marks });
 }
 
 fn inline(node: &Node) -> String {

@@ -19,6 +19,7 @@ pub mod render;
 pub mod schema;
 pub mod scope;
 pub mod validate;
+pub mod workspace;
 
 pub use error::{Error, Result};
 pub use id::{DocId, NodeId, Ref, Rev};

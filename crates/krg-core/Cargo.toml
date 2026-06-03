@@ -13,9 +13,12 @@ default = []
 search = []
 
 [dependencies]
+pulldown-cmark = { version = "0.13.4", default-features = false }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 sha2 = "0.11.0"
+ulid = "1.2.1"
+uuid = { version = "1.23.2", features = ["v4"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 # std-only scaffold. External deps added during implementation:
 #   serde, serde_json, zip, sha2, uuid, ulid, pulldown-cmark, (tantivy under `search`).
