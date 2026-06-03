@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://karanga.dev/spec/0.1/manifest.schema.json",
+  "title": "Karanga Manifest",
+  "description": "Schema for manifest.json (format-v0.1 §4). Structural validation only; the no-float value domain (§9.1) and the existence of declared custom types (§6.4) are enforced by the engine.",
+  "type": "object",
+  "required": ["krg", "doc_id", "title", "media_mode"],
+  "additionalProperties": false,
+  "properties": {
+    "krg": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Spec version MAJOR.MINOR this document conforms to."
+    },
+    "doc_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "description": "UUID."
+    },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "created": { "type": "string", "format": "date-time" },
+    "modified": { "type": "string", "format": "date-time" },
+    "media_mode": { "enum": ["embedded", "referenced"] },
+    "authors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "x": { "type": "object" }
+        }
+      }
+    },
+    "types": {
+      "type": "object",
+      "description": "Registry of non-base node types used in this document (§6.4). Keys are vendor-namespaced (vendor:name).",
+      "propertyNames": { "pattern": "^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$" },
+      "additionalProperties": { "$ref": "type-descriptor.schema.json" }
+    },
+    "x": { "type": "object" }
+  }
+}

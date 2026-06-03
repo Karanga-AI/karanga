@@ -1,0 +1,10 @@
+{
+  "id": "m_graph",
+  "type": "media",
+  "attrs": {
+    "media_kind": "image",
+    "asset": "latency",
+    "alt": "p95 latency by attempt",
+    "caption": "Latency rises with each attempt"
+  }
+}

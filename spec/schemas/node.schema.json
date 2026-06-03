@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://karanga.dev/spec/0.1/node.schema.json",
+  "title": "Karanga Node",
+  "description": "Structural envelope for a nodes/<id>.json part (format-v0.1 §6). Type-specific validation (content model, allowed attrs, child rules) is performed by the engine against the type descriptor (§6.3); this schema validates the envelope shape only.",
+  "type": "object",
+  "required": ["id", "type"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+    "type": {
+      "type": "string",
+      "description": "A base-schema type (bare name) or a namespaced custom type (vendor:name).",
+      "pattern": "^[A-Za-z0-9_-]+(:[A-Za-z0-9_-]+)?$"
+    },
+    "content": {
+      "description": "Inline runs, a raw string, or omitted — per the type's content model.",
+      "oneOf": [
+        { "type": "array", "items": { "$ref": "#/$defs/run" } },
+        { "type": "string" }
+      ]
+    },
+    "attrs": { "type": "object" },
+    "marks": {
+      "type": "object",
+      "description": "Node-local definitions for parametric marks (§7.2).",
+      "additionalProperties": { "$ref": "#/$defs/markDef" }
+    },
+    "x": { "type": "object" }
+  },
+  "$defs": {
+    "run": {
+      "type": "object",
+      "required": ["text"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string" },
+        "marks": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Simple mark keywords (strong|em|code|strike) or keys into the node's marks table."
+        }
+      }
+    },
+    "markDef": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string" },
+        "href": { "type": "string" },
+        "target": { "type": "string", "pattern": "^krg://" }
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "t_lat",
+  "type": "table",
+  "attrs": {
+    "align": [
+      "left",
+      "right"
+    ]
+  }
+}

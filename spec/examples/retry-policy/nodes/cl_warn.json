@@ -1,0 +1,7 @@
+{
+  "id": "cl_warn",
+  "type": "acme:callout",
+  "attrs": {
+    "variant": "warn"
+  }
+}

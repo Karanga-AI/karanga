@@ -1,0 +1,8 @@
+{
+  "id": "c_ex",
+  "type": "code",
+  "attrs": {
+    "language": "go"
+  },
+  "content": "func backoff(n int) time.Duration {\n\treturn (1 << n) * time.Second\n}"
+}

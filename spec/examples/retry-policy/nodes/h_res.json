@@ -1,0 +1,12 @@
+{
+  "id": "h_res",
+  "type": "heading",
+  "attrs": {
+    "level": 2
+  },
+  "content": [
+    {
+      "text": "Results"
+    }
+  ]
+}

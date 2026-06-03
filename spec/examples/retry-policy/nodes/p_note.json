@@ -1,0 +1,9 @@
+{
+  "id": "p_note",
+  "type": "paragraph",
+  "content": [
+    {
+      "text": "Retries are only safe for idempotent requests."
+    }
+  ]
+}

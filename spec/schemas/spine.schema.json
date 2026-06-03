@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://karanga.dev/spec/0.1/spine.schema.json",
+  "title": "Karanga Spine",
+  "description": "Schema for spine.json (format-v0.1 §5). The bijection with node parts, acyclicity, and projection-consistency with node parts are additional rules enforced by the engine.",
+  "type": "object",
+  "required": ["root"],
+  "additionalProperties": false,
+  "properties": {
+    "root": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["id", "type", "hash"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+        "type": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+(:[A-Za-z0-9_-]+)?$"
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "Content hash of the node part (§9); integrity + concurrency token."
+        },
+        "label": {
+          "type": "string",
+          "description": "Short plain-text label (e.g. heading text) for the outline."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/entry" }
+        }
+      }
+    }
+  }
+}

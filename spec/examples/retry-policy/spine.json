@@ -1,0 +1,168 @@
+{
+  "root": [
+    {
+      "id": "h_over",
+      "type": "heading",
+      "hash": "sha256:b5be39a832a1e35b587aba1398db74f580ad306df8c55364aace7ab6be6554a8",
+      "label": "Overview",
+      "children": [
+        {
+          "id": "p_intro",
+          "type": "paragraph",
+          "hash": "sha256:81dcb2adc3752c1ac9f1ab4433b3e65ce66736f6f2f2ce0fdb12c042d4072f28"
+        },
+        {
+          "id": "q_note",
+          "type": "blockquote",
+          "hash": "sha256:4d2f33baa4172a8e18a7690ead2cf81414a9bb6c17fdc20a53336ac2eb1ec0f9",
+          "children": [
+            {
+              "id": "p_note",
+              "type": "paragraph",
+              "hash": "sha256:91fbfa2013af0f0b577b19f471646cf4beec77c4c81135b77c71e8555347f5ff"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "h_meth",
+      "type": "heading",
+      "hash": "sha256:7d5b7931b2efd92b2c3a472f5e62e8d159416d9e07a2c18deb1ddecf80dbee11",
+      "label": "Methods",
+      "children": [
+        {
+          "id": "p_meth",
+          "type": "paragraph",
+          "hash": "sha256:965260c51ddaf8660f6ff1ca6fbf27e5cb543217a69006f23da6a5544cf3f5ca"
+        },
+        {
+          "id": "l_bk",
+          "type": "list",
+          "hash": "sha256:285719a82dc604c93bfa60621e7916eb3decdc36aa75a0b6aeb6cb1932ec5cad",
+          "children": [
+            {
+              "id": "li_1",
+              "type": "list-item",
+              "hash": "sha256:95b0e7b4102d25b34caa8e471a7715d15e818ac23d496c91cb883e0fb7589177",
+              "children": [
+                {
+                  "id": "p_li1",
+                  "type": "paragraph",
+                  "hash": "sha256:061f57b59ab27a87ce350b68309e2d45203dd76eea9d4799277b1fd141bc67cd"
+                }
+              ]
+            },
+            {
+              "id": "li_2",
+              "type": "list-item",
+              "hash": "sha256:ff63d58d7daf2f5d287eafaa18d1e57edff00a5e1394239f6e6d34b6c12f63fb",
+              "children": [
+                {
+                  "id": "p_li2",
+                  "type": "paragraph",
+                  "hash": "sha256:1dfbcc08b3168b99360bed936d881d8753042f822f8ac206749fdf265c6cf931"
+                },
+                {
+                  "id": "l_sub",
+                  "type": "list",
+                  "hash": "sha256:c0a9d779262db1d08106b7f737c5a6573c7ccf5ea074c3884480ed4fbcdcfe3b",
+                  "children": [
+                    {
+                      "id": "li_2a",
+                      "type": "list-item",
+                      "hash": "sha256:ed5932b3a433b1735d707d217116aff2701d16878d1fab921f0f42da8ae81079",
+                      "children": [
+                        {
+                          "id": "p_li2a",
+                          "type": "paragraph",
+                          "hash": "sha256:59312e4114df5b7c52d299ace06cdf5aece6ec86e4edc50a7f5c302e8a60bdc5"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "c_ex",
+          "type": "code",
+          "hash": "sha256:5cd02b883643e9b15ce604bb3f202dc153d21dd4f0ca4cdc1b5679d515021022"
+        },
+        {
+          "id": "h_res",
+          "type": "heading",
+          "hash": "sha256:4cab1a2bb86999ae75e1968546f2813e7f39b9ea6fbbc739ec6820ba1bfb15b8",
+          "label": "Results",
+          "children": [
+            {
+              "id": "t_lat",
+              "type": "table",
+              "hash": "sha256:9c9002ec3fb7f90c4083526a1a4f1037b7caaa3a30181a533788bbb162421c38",
+              "children": [
+                {
+                  "id": "tr_h",
+                  "type": "table-row",
+                  "hash": "sha256:46ab2b718facc6045e31a2750e2d18f8c75a5adde6824830823e8e786b559013",
+                  "children": [
+                    {
+                      "id": "tc_h1",
+                      "type": "table-cell",
+                      "hash": "sha256:023790d7ac178406a3f7eaf0ae06418ddb9c1d518cea0b399cf3729198685262"
+                    },
+                    {
+                      "id": "tc_h2",
+                      "type": "table-cell",
+                      "hash": "sha256:4aef85f3a38671986ed5d65f251c7b7ffb006eded65bcf33442bd6a3d69cba48"
+                    }
+                  ]
+                },
+                {
+                  "id": "tr_1",
+                  "type": "table-row",
+                  "hash": "sha256:cdc46b3fadd902e732ad3cc2ab1a4d45a17a1277852a5aca32d2eabc8f87510b",
+                  "children": [
+                    {
+                      "id": "tc_11",
+                      "type": "table-cell",
+                      "hash": "sha256:081ccd82cfd1465208867d13724beacb359be8b60163221760e8797f7a834fb0"
+                    },
+                    {
+                      "id": "tc_12",
+                      "type": "table-cell",
+                      "hash": "sha256:aa65f6d85e4a0c61db28d69071615c36975f5abefcf9c44e9e556faec0d8edbd"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "m_graph",
+              "type": "media",
+              "hash": "sha256:468949ab3c5b17fc86f8e8bfa1a36b56b73c9c133efd5192bef732570192cfb7"
+            },
+            {
+              "id": "d_div",
+              "type": "divider",
+              "hash": "sha256:998393369660f025b7dc5a8c2410445a16bcd36a105c971a65dc564006f86cdd"
+            },
+            {
+              "id": "cl_warn",
+              "type": "acme:callout",
+              "hash": "sha256:f793d1c7f48878a06a60db416b445fb91f81423d8dec784ce5ff2d431e2c8a82",
+              "children": [
+                {
+                  "id": "p_warn",
+                  "type": "paragraph",
+                  "hash": "sha256:a274243545346fd372099397164e1dfabc99fd18fc8c5c8bd68123a0a9e48b90"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

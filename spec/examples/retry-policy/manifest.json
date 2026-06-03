@@ -1,0 +1,26 @@
+{
+  "krg": "0.1",
+  "doc_id": "9f1c2e4a-6b2d-4f8a-9c3e-1a2b3c4d5e6f",
+  "title": "Retry Policy",
+  "description": "How the gateway retries upstream failures.",
+  "created": "2026-06-02T00:00:00Z",
+  "modified": "2026-06-02T00:00:00Z",
+  "media_mode": "embedded",
+  "authors": [
+    {
+      "name": "Cameron G. Gould"
+    }
+  ],
+  "types": {
+    "acme:callout": {
+      "content": "empty",
+      "children": "block",
+      "attrs": {
+        "variant": "string"
+      },
+      "render": {
+        "hint": "callout"
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "tc_h1",
+  "type": "table-cell",
+  "attrs": {
+    "header": true
+  },
+  "content": [
+    {
+      "text": "Attempt"
+    }
+  ]
+}

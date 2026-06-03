@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://karanga.dev/spec/0.1/links.schema.json",
+  "title": "Karanga Links",
+  "description": "Schema for links.json (format-v0.1 §8.3). Intra-document target resolution is an additional rule enforced by the engine.",
+  "type": "object",
+  "required": ["links"],
+  "additionalProperties": false,
+  "properties": {
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "from": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+          "to": {
+            "type": "string",
+            "pattern": "^krg://",
+            "description": "krg:// reference; exact grammar in format §3.1."
+          },
+          "type": { "type": "string" }
+        }
+      }
+    }
+  }
+}

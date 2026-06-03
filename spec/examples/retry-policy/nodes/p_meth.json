@@ -1,0 +1,9 @@
+{
+  "id": "p_meth",
+  "type": "paragraph",
+  "content": [
+    {
+      "text": "The backoff schedule is exponential:"
+    }
+  ]
+}
