@@ -112,6 +112,20 @@ pub fn search(_query: &str, _scope: &Scope) -> Result<Vec<SearchHit>> {
     ))
 }
 
+/// Force a rebuild of the persistent search index for `scope`; returns the node
+/// count indexed.
+#[cfg(feature = "search")]
+pub fn reindex(scope: &Scope) -> Result<usize> {
+    crate::search::reindex(scope)
+}
+
+#[cfg(not(feature = "search"))]
+pub fn reindex(_scope: &Scope) -> Result<usize> {
+    Err(crate::error::Error::Unsupported(
+        "built without the `search` feature".into(),
+    ))
+}
+
 /// Traverse the link graph from a node.
 pub fn get_links(node: &Ref, dir: Direction, scope: &Scope) -> Result<Vec<Link>> {
     unimplemented!("get_links")

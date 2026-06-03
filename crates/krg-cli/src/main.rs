@@ -27,6 +27,7 @@ fn main() {
         Some("delete") => cmd_delete(&args),
         Some("find") => cmd_find(&args),
         Some("search") => cmd_search(&args),
+        Some("reindex") => cmd_reindex(&args),
         Some(cmd @ ("nodes" | "links" | "move" | "set-link" | "add-media")) => {
             eprintln!("krg: '{cmd}' is not implemented yet (scaffold).");
             std::process::exit(2);
@@ -207,6 +208,14 @@ fn cmd_search(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn cmd_reindex(args: &[String]) -> Result<()> {
+    let (pos, _, _) = split(&args[1..]);
+    let dir = pos.first().map(String::as_str).unwrap_or(".");
+    let n = krg_core::query::reindex(&krg_core::scope::Scope::new(dir))?;
+    println!("indexed {n} node(s)");
+    Ok(())
+}
+
 // --- ephemeral edit session ------------------------------------------------
 
 /// A temp working directory removed when dropped.
@@ -297,6 +306,7 @@ READ:
 DISCOVER  (across a directory of .krg files):
     find <query> [dir]         match document title/description (tier 1)
     search <query> [dir]       full-text search of node content
+    reindex [dir]              rebuild the persistent search index
 
 WRITE  (operate on a .krg in place):
     new <title> <out.krg> [--desc <t>]

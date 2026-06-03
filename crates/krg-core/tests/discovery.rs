@@ -64,3 +64,23 @@ fn search_matches_content() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[cfg(feature = "search")]
+#[test]
+fn search_index_reflects_corpus_changes() {
+    let dir = scratch_dir("search-stale");
+    make_doc(&dir, "a", "Alpha", "the quick brown fox");
+
+    // First search builds + persists the index.
+    assert!(!query::search("quick", &Scope::new(&dir)).unwrap().is_empty());
+    // Querying again (unchanged corpus) reuses the persisted index.
+    assert!(!query::search("brown", &Scope::new(&dir)).unwrap().is_empty());
+    // A term not yet present.
+    assert!(query::search("lazy", &Scope::new(&dir)).unwrap().is_empty());
+
+    // Add a document → fingerprint changes → next search rebuilds and sees it.
+    make_doc(&dir, "b", "Beta", "the lazy dog sleeps");
+    assert!(!query::search("lazy", &Scope::new(&dir)).unwrap().is_empty());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
