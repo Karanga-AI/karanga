@@ -1,0 +1,17 @@
+[package]
+name = "karanga-app"
+version = "0.0.0"
+edition = "2021"
+description = "Karanga desktop editor"
+
+# Own workspace — detached from the engine workspace at the repo root.
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+krg-core = { path = "../../crates/krg-core" }

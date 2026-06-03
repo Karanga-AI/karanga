@@ -381,6 +381,28 @@ impl Workspace {
         Ok(out)
     }
 
+    /// Set the document title.
+    pub fn set_title(&mut self, title: &str) -> Result<()> {
+        self.manifest.title = title.to_string();
+        self.flush()
+    }
+
+    /// Replace the entire body with a Karanga Markdown document. Keeps the
+    /// `doc_id`/manifest; regenerates node ids (the whole-document editor save
+    /// path — id-stable editing goes through [`Workspace::set_tree`]).
+    pub fn replace_with_markdown(&mut self, md: &str) -> Result<()> {
+        let mut ids = Vec::new();
+        for e in &self.spine.root {
+            collect_ids(e, &mut ids);
+        }
+        for id in ids {
+            let _ = self.store.remove_part(&format!("nodes/{id}.json"));
+        }
+        self.spine.root.clear();
+        self.insert_markdown(Place::Root, md)?;
+        self.flush()
+    }
+
     /// Repack the working copy into a packed `.krg`.
     pub fn save(&self, out: impl AsRef<Path>) -> Result<()> {
         container::pack_dir(&self.dir, out.as_ref())

@@ -71,6 +71,18 @@ fn insert_markdown_builds_structure() {
 }
 
 #[test]
+fn inspect_reports_node_config() {
+    let tree = krg_core::tree::inspect_markdown("# Title\n\nhello **world**\n");
+    assert_eq!(tree.len(), 1);
+    assert_eq!(tree[0].ty, "heading");
+    assert_eq!(tree[0].path, "0");
+    assert!(tree[0].hash.starts_with("sha256:"));
+    // the paragraph nests under the heading's section
+    assert_eq!(tree[0].children[0].ty, "paragraph");
+    assert_eq!(tree[0].children[0].path, "0.0");
+}
+
+#[test]
 fn cross_document_backlinks() {
     let dir = scratch("xdoc");
     std::fs::create_dir_all(&dir).unwrap();

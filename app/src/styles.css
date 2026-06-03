@@ -1,0 +1,138 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1c1c1e;
+  --muted: #8a8a8e;
+  --line: #e5e5ea;
+  --accent: #3a6df0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+}
+
+#title {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 16px;
+  font-weight: 600;
+  background: transparent;
+  color: var(--fg);
+}
+
+.actions { display: flex; gap: 6px; }
+
+button {
+  border: 1px solid var(--line);
+  background: #f7f7f8;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+
+#error {
+  display: none;
+  white-space: pre-wrap;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 12px;
+  color: #b00020;
+  background: #fdecef;
+  border-bottom: 1px solid #f3c0c8;
+  padding: 8px 16px;
+}
+
+#workspace {
+  display: flex;
+  align-items: stretch;
+}
+
+#editor {
+  flex: 1;
+  min-width: 0;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 24px 120px;
+  cursor: text;
+}
+
+/* node inspector */
+#debug {
+  display: none;
+  width: 420px;
+  flex: none;
+  border-left: 1px solid var(--line);
+  background: #fafafa;
+  overflow: auto;
+  padding: 12px 14px;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+body.debug #debug { display: block; }
+
+#debug summary {
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+#debug .ty { color: var(--accent); font-weight: 600; }
+#debug .path { color: var(--muted); }
+#debug .hash { color: #b07; margin-left: auto; }
+#debug .nodejson {
+  margin: 2px 0 6px;
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+#debug .kids { margin-left: 14px; border-left: 1px dashed var(--line); padding-left: 8px; }
+
+/* the ProseMirror editing surface */
+.ProseMirror {
+  outline: none;
+  font-size: 17px;
+  line-height: 1.65;
+  min-height: 70vh;
+}
+.ProseMirror p { margin: 0 0 0.8em; }
+.ProseMirror > *:first-child { margin-top: 0; }
+.ProseMirror h1 { font-size: 1.9em; }
+.ProseMirror h2 { font-size: 1.5em; }
+.ProseMirror h3 { font-size: 1.25em; }
+.ProseMirror blockquote {
+  border-left: 3px solid var(--line);
+  margin-left: 0;
+  padding-left: 16px;
+  color: var(--muted);
+}
+.ProseMirror pre {
+  background: #f5f5f7;
+  border-radius: 8px;
+  padding: 12px 16px;
+  overflow-x: auto;
+}
+.ProseMirror code { font-family: "SF Mono", ui-monospace, monospace; font-size: 0.9em; }
+.ProseMirror hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
+.ProseMirror a { color: var(--accent); }

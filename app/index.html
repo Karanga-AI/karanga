@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Karanga</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <header>
+      <input id="title" placeholder="Untitled" spellcheck="false" />
+      <div class="actions">
+        <button id="new" title="New (⌘N)">New</button>
+        <button id="open" title="Open (⌘O)">Open</button>
+        <button id="save" title="Save (⌘S)">Save</button>
+        <button id="debug-toggle" title="Toggle node inspector">Debug</button>
+      </div>
+    </header>
+    <div id="error" role="alert"></div>
+    <div id="workspace">
+      <main id="editor"></main>
+      <aside id="debug"></aside>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

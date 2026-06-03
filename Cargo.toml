@@ -6,6 +6,9 @@ members = [
     "crates/krg-mcp",
     "crates/krg-convert",
 ]
+# The Tauri desktop app is its own workspace (it pulls a large GUI dep tree and
+# needs a built frontend), so it is excluded from the engine workspace.
+exclude = ["app"]
 
 [workspace.package]
 version = "0.0.0"
