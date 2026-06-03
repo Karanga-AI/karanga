@@ -1,7 +1,8 @@
 //! Read verbs (interface §3). All return projections, never raw JSON.
 
+use crate::container::{Store, ZipStore};
 use crate::id::{Ref, Rev};
-use crate::model::Link;
+use crate::model::{Link, Manifest};
 use crate::scope::Scope;
 use crate::Result;
 
@@ -36,9 +37,37 @@ pub enum Direction {
     Both,
 }
 
-/// Tier 1 — discovery (manifest-level; no node bodies read).
+/// Tier 1 — discovery (manifest-level only; no node bodies read).
 pub fn find_documents(query: &str, scope: &Scope, limit: usize) -> Result<Vec<DocHit>> {
-    unimplemented!("find_documents")
+    let needle = query.to_lowercase();
+    let mut hits = Vec::new();
+    for path in scope.documents()? {
+        let store = ZipStore::open(&path);
+        let manifest: Manifest = match store.read_part("manifest.json") {
+            Ok(bytes) => match serde_json::from_slice(&bytes) {
+                Ok(m) => m,
+                Err(_) => continue,
+            },
+            Err(_) => continue,
+        };
+        let hay = format!(
+            "{} {}",
+            manifest.title,
+            manifest.description.clone().unwrap_or_default()
+        )
+        .to_lowercase();
+        if needle.is_empty() || hay.contains(&needle) {
+            hits.push(DocHit {
+                r: Ref::document(&manifest.doc_id),
+                title: manifest.title,
+                description: manifest.description,
+            });
+            if hits.len() >= limit {
+                break;
+            }
+        }
+    }
+    Ok(hits)
 }
 
 /// Tier 2 — the outline (headings only; from `spine.json`).
@@ -69,9 +98,18 @@ pub fn find_nodes(doc: &Ref, ty: Option<&str>) -> Result<Vec<NodeHit>> {
     unimplemented!("find_nodes")
 }
 
-/// Full-text / fuzzy search across `scope`.
+/// Full-text search across `scope` (backed by Tantivy when the `search`
+/// feature is enabled — the default).
+#[cfg(feature = "search")]
 pub fn search(query: &str, scope: &Scope) -> Result<Vec<SearchHit>> {
-    unimplemented!("search")
+    crate::search::search(query, scope)
+}
+
+#[cfg(not(feature = "search"))]
+pub fn search(_query: &str, _scope: &Scope) -> Result<Vec<SearchHit>> {
+    Err(crate::error::Error::Unsupported(
+        "built without the `search` feature".into(),
+    ))
 }
 
 /// Traverse the link graph from a node.

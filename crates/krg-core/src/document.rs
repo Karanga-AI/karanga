@@ -11,7 +11,7 @@ use crate::container::{DirStore, Store, ZipStore};
 use crate::error::Error;
 use crate::hash::{content_hash, rev_of};
 use crate::id::{NodeId, Ref, Rev};
-use crate::model::{Manifest, Node, Spine, SpineEntry, Value};
+use crate::model::{Manifest, Node, NodeContent, Spine, SpineEntry, Value};
 use crate::render;
 use crate::Result;
 
@@ -153,6 +153,27 @@ impl Document {
         for c in &e.children {
             self.validate_entry(c, ids, issues);
         }
+    }
+
+    /// `(node_id, type, plaintext)` for every node carrying text — the input
+    /// to full-text indexing/search.
+    pub fn plaintext_nodes(&self) -> Result<Vec<(String, String, String)>> {
+        let mut out = Vec::new();
+        for e in &self.spine.root {
+            self.collect_text(e, &mut out)?;
+        }
+        Ok(out)
+    }
+
+    fn collect_text(&self, e: &SpineEntry, out: &mut Vec<(String, String, String)>) -> Result<()> {
+        let text = node_plaintext(&self.read_node(&e.id.0)?);
+        if !text.is_empty() {
+            out.push((e.id.0.clone(), e.ty.clone(), text));
+        }
+        for c in &e.children {
+            self.collect_text(c, out)?;
+        }
+        Ok(())
     }
 
     fn read_node(&self, id: &str) -> Result<Node> {
@@ -320,6 +341,14 @@ fn outline_walk(e: &SpineEntry, depth: usize, out: &mut String) {
     }
     for c in &e.children {
         outline_walk(c, depth, out);
+    }
+}
+
+fn node_plaintext(node: &Node) -> String {
+    match &node.content {
+        NodeContent::Inline(runs) => runs.iter().map(|r| r.text.as_str()).collect(),
+        NodeContent::Raw(s) => s.clone(),
+        NodeContent::Empty => String::new(),
     }
 }
 

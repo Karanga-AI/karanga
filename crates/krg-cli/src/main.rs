@@ -25,7 +25,9 @@ fn main() {
         Some("insert") => cmd_insert(&args),
         Some("update") => cmd_update(&args),
         Some("delete") => cmd_delete(&args),
-        Some(cmd @ ("find" | "nodes" | "search" | "links" | "move" | "set-link" | "add-media")) => {
+        Some("find") => cmd_find(&args),
+        Some("search") => cmd_search(&args),
+        Some(cmd @ ("nodes" | "links" | "move" | "set-link" | "add-media")) => {
             eprintln!("krg: '{cmd}' is not implemented yet (scaffold).");
             std::process::exit(2);
         }
@@ -179,6 +181,32 @@ fn stale(current_rev: &str, current: &str) -> Result<()> {
     std::process::exit(1);
 }
 
+// --- discovery -------------------------------------------------------------
+
+fn cmd_find(args: &[String]) -> Result<()> {
+    let (pos, kv, _) = split(&args[1..]);
+    let query = req(pos.first(), "find <query> [dir]")?;
+    let dir = pos.get(1).map(String::as_str).unwrap_or(".");
+    let limit = kv.get("--limit").and_then(|s| s.parse().ok()).unwrap_or(10);
+    let hits = krg_core::query::find_documents(query, &krg_core::scope::Scope::new(dir), limit)?;
+    for h in hits {
+        let desc = h.description.map(|d| format!(" — {d}")).unwrap_or_default();
+        println!("{}\t{}{}", h.r.0, h.title, desc);
+    }
+    Ok(())
+}
+
+fn cmd_search(args: &[String]) -> Result<()> {
+    let (pos, _, _) = split(&args[1..]);
+    let query = req(pos.first(), "search <query> [dir]")?;
+    let dir = pos.get(1).map(String::as_str).unwrap_or(".");
+    let hits = krg_core::query::search(query, &krg_core::scope::Scope::new(dir))?;
+    for h in hits {
+        println!("{}\t{}\t{}", h.node.0, h.doc.0, h.snippet);
+    }
+    Ok(())
+}
+
 // --- ephemeral edit session ------------------------------------------------
 
 /// A temp working directory removed when dropped.
@@ -266,6 +294,10 @@ READ:
     section <doc> <id>         render a section subtree
     validate <doc>             check hashes + structure
 
+DISCOVER  (across a directory of .krg files):
+    find <query> [dir]         match document title/description (tier 1)
+    search <query> [dir]       full-text search of node content
+
 WRITE  (operate on a .krg in place):
     new <title> <out.krg> [--desc <t>]
     insert <doc> <type> [content] [--under <id>] [--level <n>] [--lang <l>] [--ordered]
@@ -274,7 +306,7 @@ WRITE  (operate on a .krg in place):
 
     Content may be given inline or piped on stdin. <rev> comes from `krg get`.
 
-NOT YET:  find · nodes · search · links · move · set-link · add-media
+NOT YET:  nodes · links · move · set-link · add-media
 
 <doc> is a .krg file (read commands also accept an exploded directory).
 ";

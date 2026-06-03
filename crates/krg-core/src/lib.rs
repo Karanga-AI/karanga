@@ -18,6 +18,8 @@ pub mod query;
 pub mod render;
 pub mod schema;
 pub mod scope;
+#[cfg(feature = "search")]
+pub mod search;
 pub mod validate;
 pub mod workspace;
 
