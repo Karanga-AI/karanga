@@ -1,0 +1,11 @@
+[package]
+name = "krg-convert"
+description = "Format conversion between Karanga `.krg` and Markdown / other formats."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+krg-core = { workspace = true }

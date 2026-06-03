@@ -1,0 +1,15 @@
+[package]
+name = "krg-cli"
+description = "`krg` — command-line reader/writer for Karanga documents."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "krg"
+path = "src/main.rs"
+
+[dependencies]
+krg-core = { workspace = true }

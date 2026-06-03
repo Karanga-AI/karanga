@@ -1,0 +1,17 @@
+[package]
+name = "krg-core"
+description = "Karanga document engine: the .krg format and operation interface."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+# `search` will gate the optional Tantivy index (core-architecture §7).
+search = []
+
+[dependencies]
+# std-only scaffold. External deps added during implementation:
+#   serde, serde_json, zip, sha2, uuid, ulid, pulldown-cmark, (tantivy under `search`).

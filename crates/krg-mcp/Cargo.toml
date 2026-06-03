@@ -1,0 +1,11 @@
+[package]
+name = "krg-mcp"
+description = "Karanga MCP server — exposes the operation verbs to agents."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+krg-core = { workspace = true }
