@@ -2,6 +2,8 @@
 
 **A document format and editor built for hybrid human/agent collaboration.**
 
+![early demo](./docs/early_demo.png)
+
 Karanga documents are *atomic on the inside and whole on the outside*. A human reads
 and edits a flowing, Word-like document; an agent searches, navigates, and retrieves
 the same content one addressable node at a time — without ever loading the whole
