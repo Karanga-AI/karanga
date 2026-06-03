@@ -17,10 +17,10 @@ pub fn render_node(node: &Node) -> String {
     match node.ty.as_str() {
         "heading" => {
             let level = attr_int(node, "level").unwrap_or(1).clamp(1, 6) as usize;
-            format!("{} {}", "#".repeat(level), inline(node))
+            format!("{} {}", "#".repeat(level), inline_markdown(node))
         }
-        "paragraph" => inline(node),
-        "table-cell" => inline(node),
+        "paragraph" => inline_markdown(node),
+        "table-cell" => inline_markdown(node),
         "code" => {
             let lang = attr_str(node, "language").unwrap_or("");
             let body = match &node.content {
@@ -42,7 +42,7 @@ pub fn render_node(node: &Node) -> String {
             format!("![{alt}]({src})")
         }
         t if t.contains(':') => format!(":::{t}\n:::"), // declared custom block type
-        _ => inline(node), // list / list-item / table / table-row → empty own content
+        _ => inline_markdown(node), // list / list-item / table / table-row → empty own content
     }
 }
 
@@ -399,7 +399,9 @@ fn container(ty: &str, children: Vec<Block>) -> Block {
     Block { ty: ty.into(), content: NodeContent::Empty, attrs: Attrs::new(), marks: BTreeMap::new(), children }
 }
 
-fn inline(node: &Node) -> String {
+/// Render a text-bearing node's inline content to Karanga Markdown (no block
+/// syntax). Used by `render_node` and by the editor tree projection.
+pub fn inline_markdown(node: &Node) -> String {
     let runs = match &node.content {
         NodeContent::Inline(r) => r,
         _ => return String::new(),

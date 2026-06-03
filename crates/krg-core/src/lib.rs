@@ -20,6 +20,7 @@ pub mod schema;
 pub mod scope;
 #[cfg(feature = "search")]
 pub mod search;
+pub mod tree;
 pub mod validate;
 pub mod workspace;
 

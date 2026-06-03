@@ -7,13 +7,14 @@
 //! `Stale` (no last-writer-wins). v0.1 covers create / insert / update / delete;
 //! move, links, and media writes are later work.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use crate::container::{self, DirStore, Store};
 use crate::error::Error;
 use crate::hash::{content_hash, rev_of};
 use crate::id::{DocId, NodeId, Ref, Rev};
+use crate::tree::EditorBlock;
 use crate::model::{
     Attrs, Link, Links, Manifest, MarkDef, MediaMode, Node, NodeContent, Spine, SpineEntry, Value,
 };
@@ -331,6 +332,53 @@ impl Workspace {
             attrs.insert("caption".into(), Value::Str(c.to_string()));
         }
         self.insert(place, "media", "", attrs)
+    }
+
+    /// Reconcile the whole document against a desired editor tree (the
+    /// WYSIWYG save path). Blocks that carry an `id` keep it (so links/CAS
+    /// tokens survive); blocks without one are new; node parts no longer
+    /// referenced are removed. Links are untouched.
+    pub fn set_tree(&mut self, desired: Vec<EditorBlock>) -> Result<()> {
+        let mut old_vec = Vec::new();
+        for e in &self.spine.root {
+            collect_ids(e, &mut old_vec);
+        }
+        let old: BTreeSet<String> = old_vec.into_iter().collect();
+        let mut kept = BTreeSet::new();
+        let root = self.build_blocks(desired, &mut kept)?;
+        self.spine.root = root;
+        for id in old.difference(&kept) {
+            let _ = self.store.remove_part(&format!("nodes/{id}.json"));
+        }
+        self.flush()
+    }
+
+    fn build_blocks(
+        &mut self,
+        blocks: Vec<EditorBlock>,
+        kept: &mut BTreeSet<String>,
+    ) -> Result<Vec<SpineEntry>> {
+        let mut out = Vec::new();
+        for b in blocks {
+            let id = b.id.unwrap_or_else(|| ulid::Ulid::new().to_string());
+            let (content, marks) = build_content(&b.ty, &b.content);
+            let node = Node {
+                id: NodeId(id.clone()),
+                ty: b.ty.clone(),
+                content,
+                attrs: b.attrs,
+                marks,
+                ext: BTreeMap::new(),
+            };
+            let hash = content_hash(&node)?;
+            let label = (b.ty == "heading").then(|| plaintext(&node));
+            self.store
+                .write_part(&format!("nodes/{id}.json"), &to_pretty(&node)?)?;
+            kept.insert(id.clone());
+            let children = self.build_blocks(b.children, kept)?;
+            out.push(SpineEntry { id: NodeId(id), ty: b.ty, hash, label, children });
+        }
+        Ok(out)
     }
 
     /// Repack the working copy into a packed `.krg`.

@@ -14,6 +14,7 @@ use crate::id::{NodeId, Ref, Rev};
 use crate::model::{Link, Links, Manifest, Node, NodeContent, Spine, SpineEntry, Value};
 use crate::query::Direction;
 use crate::render;
+use crate::tree::EditorBlock;
 use crate::Result;
 
 pub struct Document {
@@ -161,6 +162,33 @@ impl Document {
         for c in &e.children {
             self.validate_entry(c, ids, issues);
         }
+    }
+
+    /// Produce the editor document tree (engine → WYSIWYG client). Inline
+    /// content is rendered to Karanga Markdown; container children nest.
+    pub fn to_tree(&self) -> Result<Vec<EditorBlock>> {
+        self.spine.root.iter().map(|e| self.block_of(e)).collect()
+    }
+
+    fn block_of(&self, e: &SpineEntry) -> Result<EditorBlock> {
+        let node = self.read_node(&e.id.0)?;
+        let content = match &node.content {
+            NodeContent::Inline(_) => render::inline_markdown(&node),
+            NodeContent::Raw(s) => s.clone(),
+            NodeContent::Empty => String::new(),
+        };
+        let children = e
+            .children
+            .iter()
+            .map(|c| self.block_of(c))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(EditorBlock {
+            id: Some(e.id.0.clone()),
+            ty: node.ty.clone(),
+            content,
+            attrs: node.attrs.clone(),
+            children,
+        })
     }
 
     /// Nodes filtered by segment type (from the spine; no body reads).
