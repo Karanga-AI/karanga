@@ -11,8 +11,10 @@ fn main() {
     let outcome = match args.first().map(String::as_str) {
         Some("outline") => cmd_outline(&args),
         Some("get") => cmd_get(&args),
+        Some("render") => cmd_render(&args),
+        Some("section") => cmd_section(&args),
         Some(
-            cmd @ ("find" | "section" | "nodes" | "search" | "links" | "new" | "insert"
+            cmd @ ("find" | "nodes" | "search" | "links" | "new" | "insert"
             | "update" | "move" | "delete" | "set-link" | "add-media"),
         ) => {
             eprintln!("krg: '{cmd}' is not implemented yet (scaffold).");
@@ -52,6 +54,25 @@ fn cmd_get(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn cmd_render(args: &[String]) -> Result<()> {
+    let path = args
+        .get(1)
+        .ok_or_else(|| Error::Invalid("usage: krg render <doc>".into()))?;
+    print!("{}", Document::open(path)?.render()?);
+    Ok(())
+}
+
+fn cmd_section(args: &[String]) -> Result<()> {
+    let path = args
+        .get(1)
+        .ok_or_else(|| Error::Invalid("usage: krg section <doc> <id>".into()))?;
+    let id = args
+        .get(2)
+        .ok_or_else(|| Error::Invalid("usage: krg section <doc> <id>".into()))?;
+    print!("{}", Document::open(path)?.section(id)?);
+    Ok(())
+}
+
 fn usage() -> String {
     format!(
         "krg — Karanga document tool (format v{}, partial)\n\n{}",
@@ -67,8 +88,9 @@ USAGE:
 READ:
     outline <doc>              document outline (tier 2)        [implemented]
     get <doc> <id>             one rendered node (tier 3)       [implemented]
+    render <doc>               render the whole document        [implemented]
+    section <doc> <id>         render a section subtree         [implemented]
     find <query> [dir]         discover documents (tier 1)
-    section <doc> <id>         a section subtree
     nodes <doc> --type <t>     filter nodes by segment type
     search <query> [dir]       full-text / fuzzy search
     links <doc> <id>           traverse links

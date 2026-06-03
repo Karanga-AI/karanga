@@ -58,3 +58,23 @@ fn missing_node_is_not_found() {
     let doc = Document::open(fixture()).unwrap();
     assert!(doc.node("nope").is_err());
 }
+
+#[test]
+fn render_matches_expected_md() {
+    let doc = Document::open(fixture()).unwrap();
+    let expected = std::fs::read_to_string(format!(
+        "{}/../../spec/examples/retry-policy.expected.md",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    assert_eq!(doc.render().unwrap(), expected);
+}
+
+#[test]
+fn section_renders_subtree() {
+    let doc = Document::open(fixture()).unwrap();
+    let s = doc.section("h_res").unwrap();
+    assert!(s.starts_with("## Results\n\n"), "got:\n{s}");
+    assert!(s.contains("| Attempt | Delay |\n| :--- | ---: |\n| 1 | 1s |"));
+    assert!(s.contains(":::acme:callout{variant=\"warn\"}\nNever retry on 4xx responses.\n:::"));
+}
