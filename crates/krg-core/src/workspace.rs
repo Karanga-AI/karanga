@@ -14,7 +14,9 @@ use crate::container::{self, DirStore, Store};
 use crate::error::Error;
 use crate::hash::{content_hash, rev_of};
 use crate::id::{DocId, NodeId, Ref, Rev};
-use crate::model::{Attrs, Manifest, MarkDef, MediaMode, Node, NodeContent, Spine, SpineEntry};
+use crate::model::{
+    Attrs, Link, Links, Manifest, MarkDef, MediaMode, Node, NodeContent, Spine, SpineEntry, Value,
+};
 use crate::render;
 use crate::Result;
 
@@ -39,6 +41,7 @@ pub struct Workspace {
     store: DirStore,
     manifest: Manifest,
     spine: Spine,
+    links: Vec<Link>,
 }
 
 impl Workspace {
@@ -63,6 +66,7 @@ impl Workspace {
             dir,
             manifest,
             spine: Spine { root: Vec::new() },
+            links: Vec::new(),
         };
         ws.store.write_part("mimetype", container::MIMETYPE.as_bytes())?;
         ws.flush()?;
@@ -77,7 +81,13 @@ impl Workspace {
             .map_err(|e| Error::Parse(format!("manifest.json: {e}")))?;
         let spine = serde_json::from_slice(&store.read_part("spine.json")?)
             .map_err(|e| Error::Parse(format!("spine.json: {e}")))?;
-        Ok(Workspace { dir, store, manifest, spine })
+        let links = match store.read_part("links.json") {
+            Ok(bytes) => serde_json::from_slice::<Links>(&bytes)
+                .map(|l| l.links)
+                .unwrap_or_default(),
+            Err(_) => Vec::new(),
+        };
+        Ok(Workspace { dir, store, manifest, spine, links })
     }
 
     /// Explode a packed `.krg` into `work_dir` and open it for editing.
@@ -179,6 +189,112 @@ impl Workspace {
         Ok(Cas::Ok(None))
     }
 
+    /// Relocate a node (and its subtree) to a new place (CAS-guarded on `rev`).
+    pub fn move_node(&mut self, id: &str, place: Place, rev: &Rev) -> Result<Cas> {
+        let current_hash = self.entry_hash(id)?;
+        let current_rev = rev_of(&current_hash);
+        if &current_rev != rev {
+            let current = render::render_node(&self.read_node(id)?);
+            return Ok(Cas::Stale { current_rev, current });
+        }
+        if let Place::Under(p) = &place {
+            // target must exist and must not be the node or a descendant (no cycle)
+            let entry = find(&self.spine.root, id).expect("entry exists (checked above)");
+            let mut sub = Vec::new();
+            collect_ids(entry, &mut sub);
+            if sub.iter().any(|s| s == p) {
+                return Err(Error::Invalid(format!(
+                    "cannot move '{id}' under itself or its own descendant"
+                )));
+            }
+            if find(&self.spine.root, p).is_none() {
+                return Err(Error::NotFound(format!("parent '{p}'")));
+            }
+        }
+        let subtree = remove_entry(&mut self.spine.root, id)
+            .ok_or_else(|| Error::NotFound(format!("node '{id}'")))?;
+        match place {
+            Place::Root => self.spine.root.push(subtree),
+            Place::Under(p) => {
+                find_mut(&mut self.spine.root, &p)
+                    .expect("parent exists (checked above)")
+                    .children
+                    .push(subtree);
+            }
+        }
+        self.flush()?;
+        Ok(Cas::Ok(None))
+    }
+
+    /// Add a typed link `from` → `to` (idempotent; `to` is a `krg://` reference).
+    pub fn set_link(&mut self, from: &str, to: &str, ty: &str) -> Result<()> {
+        if find(&self.spine.root, from).is_none() {
+            return Err(Error::NotFound(format!("source node '{from}'")));
+        }
+        let exists = self
+            .links
+            .iter()
+            .any(|l| l.from.0 == from && l.to.0 == to && l.ty == ty);
+        if !exists {
+            self.links.push(Link {
+                from: NodeId(from.to_string()),
+                to: Ref(to.to_string()),
+                ty: ty.to_string(),
+            });
+            self.flush()?;
+        }
+        Ok(())
+    }
+
+    /// Remove a typed link (idempotent).
+    pub fn remove_link(&mut self, from: &str, to: &str, ty: &str) -> Result<()> {
+        let before = self.links.len();
+        self.links
+            .retain(|l| !(l.from.0 == from && l.to.0 == to && l.ty == ty));
+        if self.links.len() != before {
+            self.flush()?;
+        }
+        Ok(())
+    }
+
+    /// Add a `media` node. In `embedded` documents `source` is a local file path
+    /// (its bytes are copied into `media/`); in `referenced` documents `source`
+    /// is a URL/URI stored as `src`.
+    pub fn add_media(
+        &mut self,
+        place: Place,
+        media_kind: &str,
+        source: &str,
+        alt: Option<&str>,
+        caption: Option<&str>,
+    ) -> Result<(String, Rev)> {
+        let mut attrs: Attrs = BTreeMap::new();
+        attrs.insert("media_kind".into(), Value::Str(media_kind.to_string()));
+        match self.manifest.media_mode {
+            MediaMode::Embedded => {
+                let bytes = std::fs::read(source).map_err(|e| Error::Io(format!("{source}: {e}")))?;
+                let asset = ulid::Ulid::new().to_string();
+                let ext = Path::new(source)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("bin");
+                self.store
+                    .write_part(&format!("media/{asset}.{ext}"), &bytes)?;
+                attrs.insert("asset".into(), Value::Str(asset));
+            }
+            MediaMode::Referenced => {
+                attrs.insert("src".into(), Value::Str(source.to_string()));
+            }
+        }
+        if let Some(a) = alt {
+            attrs.insert("alt".into(), Value::Str(a.to_string()));
+        }
+        if let Some(c) = caption {
+            attrs.insert("caption".into(), Value::Str(c.to_string()));
+        }
+        self.insert(place, "media", "", attrs)
+    }
+
     /// Repack the working copy into a packed `.krg`.
     pub fn save(&self, out: impl AsRef<Path>) -> Result<()> {
         container::pack_dir(&self.dir, out.as_ref())
@@ -191,6 +307,12 @@ impl Workspace {
         self.store.write_part("manifest.json", &manifest)?;
         let spine = to_pretty_value(&self.spine)?;
         self.store.write_part("spine.json", &spine)?;
+        if self.links.is_empty() {
+            let _ = self.store.remove_part("links.json");
+        } else {
+            let links = Links { links: self.links.clone() };
+            self.store.write_part("links.json", &to_pretty_value(&links)?)?;
+        }
         Ok(())
     }
 

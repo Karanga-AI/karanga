@@ -28,10 +28,12 @@ fn main() {
         Some("find") => cmd_find(&args),
         Some("search") => cmd_search(&args),
         Some("reindex") => cmd_reindex(&args),
-        Some(cmd @ ("nodes" | "links" | "move" | "set-link" | "add-media")) => {
-            eprintln!("krg: '{cmd}' is not implemented yet (scaffold).");
-            std::process::exit(2);
-        }
+        Some("nodes") => cmd_nodes(&args),
+        Some("links") => cmd_links(&args),
+        Some("move") => cmd_move(&args),
+        Some("set-link") => cmd_set_link(&args),
+        Some("remove-link") => cmd_remove_link(&args),
+        Some("add-media") => cmd_add_media(&args),
         _ => {
             print!("{}", usage());
             return;
@@ -70,6 +72,32 @@ fn cmd_section(args: &[String]) -> Result<()> {
     let path = req(args.get(1), "section <doc> <id>")?;
     let id = req(args.get(2), "section <doc> <id>")?;
     print!("{}", Document::open(path)?.section(id)?);
+    Ok(())
+}
+
+fn cmd_nodes(args: &[String]) -> Result<()> {
+    let (pos, kv, _) = split(&args[1..]);
+    let doc = req(pos.first(), "nodes <doc> [--type <t>]")?;
+    for (id, ty, label) in Document::open(doc)?.find_nodes(kv.get("--type").map(String::as_str)) {
+        println!("{id}\t{ty}\t{}", label.unwrap_or_default());
+    }
+    Ok(())
+}
+
+fn cmd_links(args: &[String]) -> Result<()> {
+    let (pos, _, flags) = split(&args[1..]);
+    let doc = req(pos.first(), "links <doc> <id> [--in|--out|--both]")?;
+    let id = req(pos.get(1), "links <doc> <id> [--in|--out|--both]")?;
+    let dir = if flags.contains("--in") {
+        krg_core::query::Direction::In
+    } else if flags.contains("--both") {
+        krg_core::query::Direction::Both
+    } else {
+        krg_core::query::Direction::Out
+    };
+    for l in Document::open(doc)?.get_links(id, dir)? {
+        println!("{}\t{}\t{}", l.from.0, l.ty, l.to.0);
+    }
     Ok(())
 }
 
@@ -175,6 +203,78 @@ fn cmd_delete(args: &[String]) -> Result<()> {
     }
 }
 
+fn cmd_move(args: &[String]) -> Result<()> {
+    let usage = "move <doc> <id> <rev> [--under <parent>]";
+    let (pos, kv, _) = split(&args[1..]);
+    let doc = req(pos.first(), usage)?;
+    let id = req(pos.get(1), usage)?;
+    let rev = req(pos.get(2), usage)?;
+    let place = match kv.get("--under") {
+        Some(p) => Place::Under(p.clone()),
+        None => Place::Root,
+    };
+    let (mut ws, _guard) = open_for_edit(doc)?;
+    match ws.move_node(id, place, &Rev(rev.clone()))? {
+        Cas::Ok(_) => {
+            ws.save(doc)?;
+            println!("moved {id}");
+            Ok(())
+        }
+        Cas::Stale { current_rev, current } => stale(&current_rev.0, &current),
+    }
+}
+
+fn cmd_set_link(args: &[String]) -> Result<()> {
+    let usage = "set-link <doc> <from-id> <to-ref> <type>";
+    let (pos, _, _) = split(&args[1..]);
+    let doc = req(pos.first(), usage)?;
+    let from = req(pos.get(1), usage)?;
+    let to = req(pos.get(2), usage)?;
+    let ty = req(pos.get(3), usage)?;
+    let (mut ws, _guard) = open_for_edit(doc)?;
+    ws.set_link(from, to, ty)?;
+    ws.save(doc)?;
+    println!("linked {from} -{ty}-> {to}");
+    Ok(())
+}
+
+fn cmd_remove_link(args: &[String]) -> Result<()> {
+    let usage = "remove-link <doc> <from-id> <to-ref> <type>";
+    let (pos, _, _) = split(&args[1..]);
+    let doc = req(pos.first(), usage)?;
+    let from = req(pos.get(1), usage)?;
+    let to = req(pos.get(2), usage)?;
+    let ty = req(pos.get(3), usage)?;
+    let (mut ws, _guard) = open_for_edit(doc)?;
+    ws.remove_link(from, to, ty)?;
+    ws.save(doc)?;
+    println!("unlinked {from} -{ty}-> {to}");
+    Ok(())
+}
+
+fn cmd_add_media(args: &[String]) -> Result<()> {
+    let usage = "add-media <doc> <kind> <source> [--under <id>] [--alt <t>] [--caption <t>]";
+    let (pos, kv, _) = split(&args[1..]);
+    let doc = req(pos.first(), usage)?;
+    let kind = req(pos.get(1), usage)?;
+    let source = req(pos.get(2), usage)?;
+    let place = match kv.get("--under") {
+        Some(p) => Place::Under(p.clone()),
+        None => Place::Root,
+    };
+    let (mut ws, _guard) = open_for_edit(doc)?;
+    let (id, rev) = ws.add_media(
+        place,
+        kind,
+        source,
+        kv.get("--alt").map(String::as_str),
+        kv.get("--caption").map(String::as_str),
+    )?;
+    ws.save(doc)?;
+    println!("{id}\t{}", rev.0);
+    Ok(())
+}
+
 fn stale(current_rev: &str, current: &str) -> Result<()> {
     eprintln!("✗ stale write rejected — node changed since you read it.");
     eprintln!("  current rev: {current_rev}");
@@ -248,7 +348,7 @@ fn req<'a>(v: Option<&'a String>, usage: &str) -> Result<&'a String> {
 
 /// Split args into positionals, `--key value` pairs, and boolean `--flags`.
 fn split(args: &[String]) -> (Vec<String>, BTreeMap<String, String>, BTreeSet<String>) {
-    const BOOLS: &[&str] = &["--ordered"];
+    const BOOLS: &[&str] = &["--ordered", "--in", "--out", "--both"];
     let mut pos = Vec::new();
     let mut kv = BTreeMap::new();
     let mut flags = BTreeSet::new();
@@ -301,6 +401,8 @@ READ:
     get <doc> <id>             one rendered node (tier 3)
     render <doc>               render the whole document
     section <doc> <id>         render a section subtree
+    nodes <doc> [--type <t>]   list nodes (optionally by segment type)
+    links <doc> <id> [--in|--out|--both]   traverse the link graph
     validate <doc>             check hashes + structure
 
 DISCOVER  (across a directory of .krg files):
@@ -313,10 +415,12 @@ WRITE  (operate on a .krg in place):
     insert <doc> <type> [content] [--under <id>] [--level <n>] [--lang <l>] [--ordered]
     update <doc> <id> <rev> [content]
     delete <doc> <id> <rev>
+    move <doc> <id> <rev> [--under <parent>]
+    set-link <doc> <from-id> <to-ref> <type>
+    remove-link <doc> <from-id> <to-ref> <type>
+    add-media <doc> <kind> <source> [--under <id>] [--alt <t>] [--caption <t>]
 
     Content may be given inline or piped on stdin. <rev> comes from `krg get`.
-
-NOT YET:  nodes · links · move · set-link · add-media
 
 <doc> is a .krg file (read commands also accept an exploded directory).
 ";

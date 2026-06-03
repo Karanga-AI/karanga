@@ -11,7 +11,8 @@ use crate::container::{DirStore, Store, ZipStore};
 use crate::error::Error;
 use crate::hash::{content_hash, rev_of};
 use crate::id::{NodeId, Ref, Rev};
-use crate::model::{Manifest, Node, NodeContent, Spine, SpineEntry, Value};
+use crate::model::{Link, Links, Manifest, Node, NodeContent, Spine, SpineEntry, Value};
+use crate::query::Direction;
 use crate::render;
 use crate::Result;
 
@@ -62,11 +63,18 @@ impl Document {
     pub fn node(&self, id: &str) -> Result<RenderedNode> {
         let entry = find(&self.spine.root, id)
             .ok_or_else(|| Error::NotFound(format!("node '{id}'")))?;
+        // Media needs store access to resolve an embedded asset to its path;
+        // other leaf types render locally.
+        let content = if entry.ty == "media" {
+            self.render_media(entry)?
+        } else {
+            render::render_node(&self.read_node(id)?)
+        };
         Ok(RenderedNode {
             r: Ref::node(&self.manifest.doc_id, &NodeId(id.to_string())),
             ty: entry.ty.clone(),
             rev: rev_of(&entry.hash),
-            content: render::render_node(&self.read_node(id)?),
+            content,
         })
     }
 
@@ -153,6 +161,54 @@ impl Document {
         for c in &e.children {
             self.validate_entry(c, ids, issues);
         }
+    }
+
+    /// Nodes filtered by segment type (from the spine; no body reads).
+    /// Returns `(node_id, type, label)`.
+    pub fn find_nodes(&self, ty: Option<&str>) -> Vec<(String, String, Option<String>)> {
+        let mut out = Vec::new();
+        fn walk(e: &SpineEntry, ty: Option<&str>, out: &mut Vec<(String, String, Option<String>)>) {
+            if ty.is_none_or(|t| t == e.ty) {
+                out.push((e.id.0.clone(), e.ty.clone(), e.label.clone()));
+            }
+            for c in &e.children {
+                walk(c, ty, out);
+            }
+        }
+        for e in &self.spine.root {
+            walk(e, ty, &mut out);
+        }
+        out
+    }
+
+    /// All links recorded in `links.json` (empty if absent).
+    pub fn links(&self) -> Result<Vec<Link>> {
+        match self.store.read_part("links.json") {
+            Ok(bytes) => serde_json::from_slice::<Links>(&bytes)
+                .map(|l| l.links)
+                .map_err(|e| Error::Parse(format!("links.json: {e}"))),
+            Err(_) => Ok(Vec::new()),
+        }
+    }
+
+    /// Links touching a node, by direction (interface §3.7).
+    pub fn get_links(&self, node_id: &str, dir: Direction) -> Result<Vec<Link>> {
+        let full = Ref::node(&self.manifest.doc_id, &NodeId(node_id.to_string())).0;
+        let short = format!("krg:///{node_id}");
+        let mut out = Vec::new();
+        for l in self.links()? {
+            let is_out = l.from.0 == node_id;
+            let is_in = l.to.0 == full || l.to.0 == short;
+            let keep = match dir {
+                Direction::Out => is_out,
+                Direction::In => is_in,
+                Direction::Both => is_out || is_in,
+            };
+            if keep {
+                out.push(l);
+            }
+        }
+        Ok(out)
     }
 
     /// `(node_id, type, plaintext)` for every node carrying text — the input
