@@ -13,6 +13,7 @@ fn main() {
         Some("get") => cmd_get(&args),
         Some("render") => cmd_render(&args),
         Some("section") => cmd_section(&args),
+        Some("validate") => cmd_validate(&args),
         Some(
             cmd @ ("find" | "nodes" | "search" | "links" | "new" | "insert"
             | "update" | "move" | "delete" | "set-link" | "add-media"),
@@ -73,6 +74,23 @@ fn cmd_section(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn cmd_validate(args: &[String]) -> Result<()> {
+    let path = args
+        .get(1)
+        .ok_or_else(|| Error::Invalid("usage: krg validate <doc>".into()))?;
+    let issues = Document::open(path)?.validate()?;
+    if issues.is_empty() {
+        println!("valid");
+        Ok(())
+    } else {
+        for i in &issues {
+            eprintln!("✗ {i}");
+        }
+        eprintln!("{} issue(s)", issues.len());
+        std::process::exit(1);
+    }
+}
+
 fn usage() -> String {
     format!(
         "krg — Karanga document tool (format v{}, partial)\n\n{}",
@@ -90,6 +108,7 @@ READ:
     get <doc> <id>             one rendered node (tier 3)       [implemented]
     render <doc>               render the whole document        [implemented]
     section <doc> <id>         render a section subtree         [implemented]
+    validate <doc>             check hashes + structure         [implemented]
     find <query> [dir]         discover documents (tier 1)
     nodes <doc> --type <t>     filter nodes by segment type
     search <query> [dir]       full-text / fuzzy search

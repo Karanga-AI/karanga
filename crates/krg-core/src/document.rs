@@ -4,11 +4,12 @@
 //! directory (via [`DirStore`]). The Ref-based verbs in [`crate::query`] will
 //! wrap this once cross-document discovery exists.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use crate::container::{DirStore, Store, ZipStore};
 use crate::error::Error;
-use crate::hash::rev_of;
+use crate::hash::{content_hash, rev_of};
 use crate::id::{NodeId, Ref, Rev};
 use crate::model::{Manifest, Node, Spine, SpineEntry, Value};
 use crate::render;
@@ -85,6 +86,73 @@ impl Document {
         let mut blocks = Vec::new();
         self.emit(entry, &mut blocks)?;
         Ok(format!("{}\n", blocks.join("\n\n")))
+    }
+
+    /// Conformance check (format §11): recompute each node's content hash and
+    /// compare to its spine projection, verify the spine↔nodes bijection, and
+    /// detect duplicate ids and type-projection drift. Returns the list of
+    /// issues (empty ⇒ valid).
+    pub fn validate(&self) -> Result<Vec<String>> {
+        let mut issues = Vec::new();
+        let mut ids = BTreeSet::new();
+        for e in &self.spine.root {
+            self.validate_entry(e, &mut ids, &mut issues);
+        }
+        let parts: BTreeSet<String> = self
+            .store
+            .list("nodes")?
+            .into_iter()
+            .filter_map(|p| {
+                Path::new(&p)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(String::from)
+            })
+            .collect();
+        for id in &ids {
+            if !parts.contains(id) {
+                issues.push(format!("spine references missing node part '{id}'"));
+            }
+        }
+        for p in &parts {
+            if !ids.contains(p) {
+                issues.push(format!("orphan node part '{p}' not in spine"));
+            }
+        }
+        Ok(issues)
+    }
+
+    fn validate_entry(
+        &self,
+        e: &SpineEntry,
+        ids: &mut BTreeSet<String>,
+        issues: &mut Vec<String>,
+    ) {
+        if !ids.insert(e.id.0.clone()) {
+            issues.push(format!("duplicate node id '{}'", e.id.0));
+        }
+        match self.read_node(&e.id.0) {
+            Ok(node) => {
+                if node.ty != e.ty {
+                    issues.push(format!(
+                        "type projection drift for '{}': spine='{}' node='{}'",
+                        e.id.0, e.ty, node.ty
+                    ));
+                }
+                match content_hash(&node) {
+                    Ok(h) if h != e.hash => issues.push(format!(
+                        "hash mismatch for '{}': spine={} actual={}",
+                        e.id.0, e.hash, h
+                    )),
+                    Ok(_) => {}
+                    Err(err) => issues.push(format!("hash error for '{}': {err}", e.id.0)),
+                }
+            }
+            Err(err) => issues.push(format!("cannot read node '{}': {err}", e.id.0)),
+        }
+        for c in &e.children {
+            self.validate_entry(c, ids, issues);
+        }
     }
 
     fn read_node(&self, id: &str) -> Result<Node> {

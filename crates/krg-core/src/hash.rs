@@ -1,21 +1,31 @@
 //! Canonical JSON + content hashing (format §9) and `Rev` derivation.
 //!
-//! The canonicalizer is vendored (~no dependency) and operates over the
-//! restricted value domain of §9.1 (integers only, ASCII keys), making it
-//! byte-identical to RFC 8785 for Karanga data.
+//! Canonical form (§9.1) is obtained by serializing a node to a
+//! `serde_json::Value` — whose object keys are a sorted `BTreeMap` — and then
+//! to a compact string. Over the integer-only / ASCII-key domain this is
+//! byte-identical to RFC 8785, with no external canonicalization dependency.
 
+use sha2::{Digest, Sha256};
+
+use crate::error::Error;
 use crate::id::Rev;
 use crate::model::Node;
+use crate::Result;
 
 /// Canonical serialization of a node part for hashing (§9.1):
-/// sorted keys, compact, UTF-8, integer-only domain.
-pub fn canonicalize(part: &Node) -> String {
-    unimplemented!("RFC 8785-restricted canonical JSON")
+/// sorted keys, compact, UTF-8.
+pub fn canonicalize(node: &Node) -> Result<String> {
+    let value: serde_json::Value =
+        serde_json::to_value(node).map_err(|e| Error::Parse(e.to_string()))?;
+    serde_json::to_string(&value).map_err(|e| Error::Parse(e.to_string()))
 }
 
 /// `"sha256:" + lowercase-hex` over the canonical form (§9).
-pub fn content_hash(part: &Node) -> String {
-    unimplemented!("sha256 of canonical form")
+pub fn content_hash(node: &Node) -> Result<String> {
+    let canon = canonicalize(node)?;
+    let digest = Sha256::digest(canon.as_bytes());
+    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+    Ok(format!("sha256:{hex}"))
 }
 
 /// Derive the short `Rev` (first 12 hex chars) from a `"sha256:<hex>"` string.

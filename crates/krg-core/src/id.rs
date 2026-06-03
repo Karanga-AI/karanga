@@ -1,22 +1,22 @@
 //! Identifiers and `krg://` references (format §3).
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::Result;
 
 /// A document identifier — a UUID.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct DocId(pub String);
 
 /// A node identifier — opaque, unique within its document
 /// (`^[A-Za-z0-9_-]{1,64}$`; ULID recommended).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct NodeId(pub String);
 
 /// A `krg://` reference to a node or a document (an opaque handle to callers).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Ref(pub String);
 

@@ -71,6 +71,16 @@ fn render_matches_expected_md() {
 }
 
 #[test]
+fn fixture_validates_clean() {
+    // Recomputes every node's content hash via the Rust canonicalizer and
+    // checks it against the spine hashes (written by the Python generator).
+    // A clean result proves the two canonicalizations are byte-identical.
+    let doc = Document::open(fixture()).unwrap();
+    let issues = doc.validate().unwrap();
+    assert!(issues.is_empty(), "validation issues: {issues:#?}");
+}
+
+#[test]
 fn section_renders_subtree() {
     let doc = Document::open(fixture()).unwrap();
     let s = doc.section("h_res").unwrap();

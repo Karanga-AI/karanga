@@ -7,10 +7,10 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use serde::de::{self, Deserializer, SeqAccess, Visitor};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize, Serializer};
 
 /// A node type's own payload kind (format §6.3).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ContentModel {
     Empty,
@@ -56,15 +56,24 @@ impl<'de> Deserialize<'de> for ChildRule {
     }
 }
 
+impl Serialize for ChildRule {
+    fn serialize<S: Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            ChildRule::Block => s.serialize_str("block"),
+            ChildRule::Types(v) => v.serialize(s),
+        }
+    }
+}
+
 /// Describes a node type's shape (format §6.3).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TypeDescriptor {
     pub content: ContentModel,
     /// `Some(..)` ⇒ the type is a container.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub children: Option<ChildRule>,
     /// Permitted attributes (name → value-domain). Placeholder representation.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "map_is_empty")]
     pub attrs: BTreeMap<String, String>,
     // `render` hints are advisory and ignored here (unknown fields are dropped).
 }
@@ -73,4 +82,8 @@ pub struct TypeDescriptor {
 /// `table` set), format §6.2.
 pub fn base_schema() -> BTreeMap<String, TypeDescriptor> {
     unimplemented!("v0.1 base schema descriptors")
+}
+
+fn map_is_empty<K, V>(m: &BTreeMap<K, V>) -> bool {
+    m.is_empty()
 }
