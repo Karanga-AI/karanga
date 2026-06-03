@@ -23,6 +23,7 @@ fn main() {
         Some("validate") => cmd_validate(&args),
         Some("new") => cmd_new(&args),
         Some("insert") => cmd_insert(&args),
+        Some("insert-md") => cmd_insert_md(&args),
         Some("update") => cmd_update(&args),
         Some("delete") => cmd_delete(&args),
         Some("find") => cmd_find(&args),
@@ -85,17 +86,39 @@ fn cmd_nodes(args: &[String]) -> Result<()> {
 }
 
 fn cmd_links(args: &[String]) -> Result<()> {
-    let (pos, _, flags) = split(&args[1..]);
-    let doc = req(pos.first(), "links <doc> <id> [--in|--out|--both]")?;
-    let id = req(pos.get(1), "links <doc> <id> [--in|--out|--both]")?;
-    let dir = if flags.contains("--in") {
-        krg_core::query::Direction::In
-    } else if flags.contains("--both") {
-        krg_core::query::Direction::Both
-    } else {
-        krg_core::query::Direction::Out
-    };
-    for l in Document::open(doc)?.get_links(id, dir)? {
+    use krg_core::query::Direction;
+    let usage = "links <doc> <id> [--in|--out|--both] [--scope <dir>]";
+    let (pos, kv, flags) = split(&args[1..]);
+    let doc = req(pos.first(), usage)?;
+    let id = req(pos.get(1), usage)?;
+    let want_in = flags.contains("--in") || flags.contains("--both");
+    let want_out = flags.contains("--out") || flags.contains("--both") || !want_in;
+
+    let document = Document::open(doc)?;
+    let mut links = Vec::new();
+    if want_out {
+        links.extend(document.get_links(id, Direction::Out)?);
+    }
+    if want_in {
+        // cross-document backlinks: full ref of this node, scanned over a scope dir
+        let target = krg_core::id::Ref::node(
+            &document.manifest.doc_id,
+            &krg_core::id::NodeId(id.to_string()),
+        )
+        .0;
+        let scope_dir = kv
+            .get("--scope")
+            .cloned()
+            .unwrap_or_else(|| {
+                std::path::Path::new(doc)
+                    .parent()
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| ".".to_string())
+            });
+        links.extend(krg_core::query::backlinks(&target, &krg_core::scope::Scope::new(scope_dir))?);
+    }
+    for l in links {
         println!("{}\t{}\t{}", l.from.0, l.ty, l.to.0);
     }
     Ok(())
@@ -162,6 +185,27 @@ fn cmd_insert(args: &[String]) -> Result<()> {
     let (id, rev) = ws.insert(place, ty, &content, attrs)?;
     ws.save(doc)?;
     println!("{id}\t{}", rev.0);
+    Ok(())
+}
+
+fn cmd_insert_md(args: &[String]) -> Result<()> {
+    let usage = "insert-md <doc> [markdown] [--under <id>]";
+    let (pos, kv, _) = split(&args[1..]);
+    let doc = req(pos.first(), usage)?;
+    let md = match pos.get(1) {
+        Some(m) => m.clone(),
+        None => read_stdin()?,
+    };
+    let place = match kv.get("--under") {
+        Some(p) => Place::Under(p.clone()),
+        None => Place::Root,
+    };
+    let (mut ws, _guard) = open_for_edit(doc)?;
+    let ids = ws.insert_markdown(place, &md)?;
+    ws.save(doc)?;
+    for id in ids {
+        println!("{id}");
+    }
     Ok(())
 }
 
@@ -413,6 +457,7 @@ DISCOVER  (across a directory of .krg files):
 WRITE  (operate on a .krg in place):
     new <title> <out.krg> [--desc <t>]
     insert <doc> <type> [content] [--under <id>] [--level <n>] [--lang <l>] [--ordered]
+    insert-md <doc> [markdown] [--under <id>]   author a whole Markdown fragment
     update <doc> <id> <rev> [content]
     delete <doc> <id> <rev>
     move <doc> <id> <rev> [--under <parent>]

@@ -21,6 +21,7 @@ use crate::render;
 use crate::Result;
 
 /// Where to place a newly inserted node.
+#[derive(Clone)]
 pub enum Place {
     /// Append at the end of the document root.
     Root,
@@ -110,22 +111,59 @@ impl Workspace {
         content: &str,
         attrs: Attrs,
     ) -> Result<(String, Rev)> {
-        let id = NodeId(ulid::Ulid::new().to_string());
         let (content, marks) = build_content(ty, content);
         let node = Node {
-            id: id.clone(),
+            id: NodeId(ulid::Ulid::new().to_string()),
             ty: ty.to_string(),
             content,
             attrs,
             marks,
             ext: BTreeMap::new(),
         };
+        self.add_built(place, node)
+    }
+
+    /// Insert a whole Karanga Markdown fragment as a node subtree under `place`.
+    /// Returns the ids of the top-level nodes created.
+    pub fn insert_markdown(&mut self, place: Place, md: &str) -> Result<Vec<String>> {
+        let mut ids = Vec::new();
+        for block in render::parse_markdown(md) {
+            ids.push(self.insert_block(place.clone(), block)?);
+        }
+        Ok(ids)
+    }
+
+    fn insert_block(&mut self, place: Place, block: render::Block) -> Result<String> {
+        let render::Block { ty, content, attrs, marks, children } = block;
+        let node = Node {
+            id: NodeId(ulid::Ulid::new().to_string()),
+            ty,
+            content,
+            attrs,
+            marks,
+            ext: BTreeMap::new(),
+        };
+        let (id, _) = self.add_built(place, node)?;
+        for child in children {
+            self.insert_block(Place::Under(id.clone()), child)?;
+        }
+        Ok(id)
+    }
+
+    /// Write a fully-built node and add its spine entry at `place`.
+    fn add_built(&mut self, place: Place, node: Node) -> Result<(String, Rev)> {
         let hash = content_hash(&node)?;
         let rev = rev_of(&hash);
-        let label = (ty == "heading").then(|| plaintext(&node));
+        let label = (node.ty == "heading").then(|| plaintext(&node));
         self.store
-            .write_part(&format!("nodes/{}.json", id.0), &to_pretty(&node)?)?;
-        let entry = SpineEntry { id: id.clone(), ty: ty.to_string(), hash, label, children: Vec::new() };
+            .write_part(&format!("nodes/{}.json", node.id.0), &to_pretty(&node)?)?;
+        let entry = SpineEntry {
+            id: node.id.clone(),
+            ty: node.ty.clone(),
+            hash,
+            label,
+            children: Vec::new(),
+        };
         match place {
             Place::Root => self.spine.root.push(entry),
             Place::Under(pid) => {
@@ -135,7 +173,7 @@ impl Workspace {
             }
         }
         self.flush()?;
-        Ok((id.0, rev))
+        Ok((node.id.0, rev))
     }
 
     /// Replace a node's content (CAS-guarded on `rev`).

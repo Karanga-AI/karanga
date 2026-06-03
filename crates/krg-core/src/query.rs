@@ -1,8 +1,9 @@
-//! Read verbs (interface §3). All return projections, never raw JSON.
+//! Cross-document read verbs (interface §3, §6). Single-document reads live on
+//! [`crate::document::Document`]; the functions here span a directory `scope`.
 
 use crate::container::{Store, ZipStore};
-use crate::id::{Ref, Rev};
-use crate::model::{Link, Manifest};
+use crate::id::Ref;
+use crate::model::{Link, Links, Manifest};
 use crate::scope::Scope;
 use crate::Result;
 
@@ -14,15 +15,7 @@ pub struct DocHit {
     pub description: Option<String>,
 }
 
-/// A node listed by `find_nodes`.
-#[derive(Debug)]
-pub struct NodeHit {
-    pub r: Ref,
-    pub ty: String,
-    pub label: Option<String>,
-}
-
-/// A full-text/fuzzy search hit.
+/// A full-text search hit.
 #[derive(Debug)]
 pub struct SearchHit {
     pub doc: Ref,
@@ -30,6 +23,7 @@ pub struct SearchHit {
     pub snippet: String,
 }
 
+/// Direction of link traversal (used by `Document::get_links` and `backlinks`).
 #[derive(Debug, Clone, Copy)]
 pub enum Direction {
     Out,
@@ -70,32 +64,45 @@ pub fn find_documents(query: &str, scope: &Scope, limit: usize) -> Result<Vec<Do
     Ok(hits)
 }
 
-/// Tier 2 — the outline (headings only; from `spine.json`).
-pub fn get_outline(doc: &Ref) -> Result<String> {
-    unimplemented!("get_outline")
+/// Cross-document backlinks: every link in `scope` whose target is `target_ref`
+/// (a full `krg://<doc>/<node>` reference). A same-document link recorded with
+/// the short `krg:///<node>` form is matched too.
+pub fn backlinks(target_ref: &str, scope: &Scope) -> Result<Vec<Link>> {
+    let (target_doc, target_node) = split_ref(target_ref);
+    let short = target_node.as_ref().map(|n| format!("krg:///{n}"));
+    let mut out = Vec::new();
+    for path in scope.documents()? {
+        let store = ZipStore::open(&path);
+        let manifest: Manifest = match store.read_part("manifest.json") {
+            Ok(b) => match serde_json::from_slice(&b) {
+                Ok(m) => m,
+                Err(_) => continue,
+            },
+            Err(_) => continue,
+        };
+        let links: Vec<Link> = match store.read_part("links.json") {
+            Ok(b) => serde_json::from_slice::<Links>(&b).map(|l| l.links).unwrap_or_default(),
+            Err(_) => continue,
+        };
+        let same_doc = target_doc.as_deref() == Some(manifest.doc_id.0.as_str());
+        for l in links {
+            let hit = l.to.0 == target_ref
+                || (same_doc && short.as_deref() == Some(l.to.0.as_str()));
+            if hit {
+                out.push(l);
+            }
+        }
+    }
+    Ok(out)
 }
 
-/// Tier 3 — one rendered node, plus its `rev` for a follow-up CAS write.
-pub fn get_node(node: &Ref) -> Result<RenderedNode> {
-    unimplemented!("get_node")
-}
-
-#[derive(Debug)]
-pub struct RenderedNode {
-    pub r: Ref,
-    pub ty: String,
-    pub rev: Rev,
-    pub content: String,
-}
-
-/// A rendered section subtree.
-pub fn get_section(heading: &Ref) -> Result<String> {
-    unimplemented!("get_section")
-}
-
-/// Filter nodes by segment type (from `spine.json`; no body reads).
-pub fn find_nodes(doc: &Ref, ty: Option<&str>) -> Result<Vec<NodeHit>> {
-    unimplemented!("find_nodes")
+/// Split `krg://<doc>/<node>` (or `krg:///<node>`) into its parts.
+fn split_ref(r: &str) -> (Option<String>, Option<String>) {
+    let rest = r.strip_prefix("krg://").unwrap_or(r);
+    let mut it = rest.splitn(2, '/');
+    let doc = it.next().filter(|s| !s.is_empty()).map(String::from);
+    let node = it.next().filter(|s| !s.is_empty()).map(String::from);
+    (doc, node)
 }
 
 /// Full-text search across `scope` (backed by Tantivy when the `search`
@@ -124,9 +131,4 @@ pub fn reindex(_scope: &Scope) -> Result<usize> {
     Err(crate::error::Error::Unsupported(
         "built without the `search` feature".into(),
     ))
-}
-
-/// Traverse the link graph from a node.
-pub fn get_links(node: &Ref, dir: Direction, scope: &Scope) -> Result<Vec<Link>> {
-    unimplemented!("get_links")
 }
