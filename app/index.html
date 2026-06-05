@@ -7,23 +7,35 @@
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
-    <header>
-      <input id="title" placeholder="Untitled" spellcheck="false" />
-      <div class="actions">
+    <header data-tauri-drag-region>
+      <div class="doc-id" data-tauri-drag-region>
+        <span id="file-name" data-tauri-drag-region>Untitled</span>
+        <span id="save-state" data-tauri-drag-region></span>
+      </div>
+      <nav class="actions">
         <button id="new" title="New (⌘N)">New</button>
         <button id="open" title="Open (⌘O)">Open</button>
         <button id="save" title="Save (⌘S)">Save</button>
-        <button id="debug-toggle" title="Toggle node inspector">Debug</button>
-      </div>
+        <button id="theme-toggle" title="Theme">Auto</button>
+        <button id="debug-toggle" title="Toggle node inspector">Nodes</button>
+      </nav>
     </header>
     <div id="error" role="alert"></div>
     <button id="add-row" class="table-hover-btn" hidden title="Add row">+</button>
     <button id="add-col" class="table-hover-btn" hidden title="Add column">+</button>
     <div id="table-menu" hidden></div>
     <div id="workspace">
-      <main id="editor"></main>
+      <main id="page">
+        <input id="title" placeholder="Untitled" spellcheck="false" autocomplete="off" />
+        <div id="editor"></div>
+      </main>
       <aside id="debug"></aside>
     </div>
+    <footer id="status">
+      <span id="word-count">0 words</span>
+      <span class="status-spacer"></span>
+      <span id="status-hint"></span>
+    </footer>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

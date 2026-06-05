@@ -1,6 +1,13 @@
+import "@fontsource-variable/fraunces/opsz.css";
+import "@fontsource-variable/fraunces/opsz-italic.css";
+import "@fontsource-variable/newsreader";
+import "@fontsource-variable/newsreader/wght-italic.css";
+import "@fontsource-variable/jetbrains-mono";
+
 import { Editor, Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
+import Placeholder from "@tiptap/extension-placeholder";
 import Table from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
@@ -10,6 +17,25 @@ import TurndownService from "turndown";
 import { tables as gfmTables } from "turndown-plugin-gfm";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import {
+  applyPreference,
+  cyclePreference,
+  initTheme,
+  type Theme,
+  type ThemePreference,
+} from "./themes";
+
+// --- theme -------------------------------------------------------------------
+const themeBtn = document.querySelector<HTMLButtonElement>("#theme-toggle")!;
+function reflectTheme(theme: Theme, pref: ThemePreference): void {
+  themeBtn.textContent = pref === "system" ? "Auto" : theme.label;
+  themeBtn.title = pref === "system" ? `Theme: Auto (${theme.label})` : `Theme: ${theme.label}`;
+}
+initTheme(reflectTheme);
+themeBtn.addEventListener("click", () => {
+  const pref = cyclePreference();
+  reflectTheme(applyPreference(pref), pref);
+});
 
 // --- visible error surface (so failures aren't silent) ---------------------
 const errorEl = document.querySelector<HTMLDivElement>("#error")!;
@@ -121,6 +147,7 @@ try {
       // `- `, `> `, ``` ``` ```, `1. `, `---` transforms live as you type.
       StarterKit,
       Link.configure({ openOnClick: false }),
+      Placeholder.configure({ placeholder: "Begin writing…" }),
       Table.configure({ resizable: false }),
       TableRow,
       TableHeader,
@@ -277,9 +304,37 @@ function setMarkdown(md: string): void {
   editor.commands.setContent(html);
 }
 
+// --- status surfaces ---------------------------------------------------------
+const fileNameEl = document.querySelector<HTMLSpanElement>("#file-name")!;
+const saveStateEl = document.querySelector<HTMLSpanElement>("#save-state")!;
+const wordCountEl = document.querySelector<HTMLSpanElement>("#word-count")!;
+const statusHintEl = document.querySelector<HTMLSpanElement>("#status-hint")!;
+
 function updateWindowTitle(): void {
-  const base = currentPath ? currentPath.split(/[\\/]/).pop() : title();
+  const base = currentPath ? currentPath.split(/[\\/]/).pop()! : title();
   document.title = `${dirty ? "• " : ""}${base} — Karanga`;
+  fileNameEl.textContent = base;
+  saveStateEl.textContent = dirty ? "edited" : currentPath ? "saved" : "";
+  saveStateEl.classList.toggle("dirty", dirty);
+  statusHintEl.textContent = dirty ? "⌘S to save" : "";
+  updateWordCount();
+}
+
+function updateWordCount(): void {
+  const words = editor
+    .getText()
+    .split(/\s+/)
+    .filter((w) => w.length > 0).length;
+  const minutes = Math.max(1, Math.round(words / 220));
+  wordCountEl.textContent =
+    words === 0 ? "0 words" : `${words.toLocaleString()} word${words === 1 ? "" : "s"} · ${minutes} min`;
+}
+
+/** Brief visual acknowledgement on the save indicator. */
+function pulseSaved(): void {
+  saveStateEl.classList.remove("pulse");
+  void saveStateEl.offsetWidth; // restart the animation
+  saveStateEl.classList.add("pulse");
 }
 
 async function openFile(): Promise<void> {
@@ -298,6 +353,7 @@ async function save(): Promise<void> {
   await invoke("save_document", { path: currentPath, title: title(), markdown: getMarkdown() });
   dirty = false;
   updateWindowTitle();
+  pulseSaved();
 }
 
 async function saveAs(): Promise<void> {

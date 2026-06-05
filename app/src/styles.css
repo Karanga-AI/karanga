@@ -1,202 +1,477 @@
+/* ==========================================================================
+   Karanga — "the quiet desk"
+   Warm paper, editorial serifs for the document, monospace for the machine-
+   facing chrome. The UI recedes; the text is the instrument.
+   ========================================================================== */
+
+/* Color tokens are owned by the theme layer (src/themes.ts), which sets them
+   as inline custom properties on :root. The values here are the `paper`
+   defaults — the no-JS / first-paint fallback. Add a theme by registering a
+   token set in themes.ts; this stylesheet only ever reads tokens. */
 :root {
-  --bg: #ffffff;
-  --fg: #1c1c1e;
-  --muted: #8a8a8e;
-  --line: #e5e5ea;
-  --accent: #3a6df0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --paper: #f6f2ea;
+  --paper-deep: #efe9dd;
+  --paper-raised: #fdfbf6;
+  --ink: #221c12;
+  --ink-soft: #6f6754;
+  --ink-faint: #a89f8a;
+  --line: #e2dac9;
+  --line-strong: #cfc5ae;
+  --accent: #b0512a; /* kauri terracotta */
+  --accent-deep: #8d3f1f;
+  --danger: #a23725;
+  --annotate: #9c7c3c; /* metadata accents: hashes, fine print */
+  --selection: rgba(176, 81, 42, 0.16);
+  --code-bg: #26211a;
+  --code-ink: #ece4d2;
+  --shadow: 0 10px 30px rgba(34, 28, 18, 0.14), 0 2px 8px rgba(34, 28, 18, 0.08);
+
+  --font-display: "Fraunces Variable", "Iowan Old Style", Georgia, serif;
+  --font-text: "Newsreader Variable", "Iowan Old Style", Georgia, serif;
+  --font-mono: "JetBrains Mono Variable", "SF Mono", ui-monospace, monospace;
+
+  --header-h: 52px;
+  --status-h: 34px;
+  --traffic-lights: 84px; /* clearance for the macOS overlay titlebar */
 }
 
 * { box-sizing: border-box; }
 
-body {
+html, body {
   margin: 0;
-  color: var(--fg);
-  background: var(--bg);
+  background: var(--paper);
+  color: var(--ink);
 }
 
+body {
+  padding-top: var(--header-h);
+  padding-bottom: var(--status-h);
+  font-family: var(--font-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--selection); }
+
+/* faint paper grain */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(34, 28, 18, 0.028) 1px, transparent 1px);
+  background-size: 5px 5px;
+}
+
+/* --- header: a slim instrument bar, doubles as the window drag region ------ */
 header {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 50;
+  height: var(--header-h);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
+  justify-content: space-between;
+  padding: 0 18px 0 var(--traffic-lights);
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--line);
-  position: sticky;
-  top: 0;
-  background: var(--bg);
+  animation: settle-down 0.45s ease both;
 }
 
-#title {
-  flex: 1;
-  border: none;
-  outline: none;
-  font-size: 16px;
-  font-weight: 600;
-  background: transparent;
-  color: var(--fg);
+.doc-id {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
 }
+#file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#save-state {
+  flex: none;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--ink-faint);
+}
+#save-state.dirty { color: var(--accent); }
+#save-state.pulse { animation: save-pulse 0.9s ease both; }
 
-.actions { display: flex; gap: 6px; }
+.actions { display: flex; gap: 2px; }
 
 button {
-  border: 1px solid var(--line);
-  background: #f7f7f8;
-  border-radius: 6px;
-  padding: 4px 12px;
-  font-size: 13px;
+  font-family: var(--font-mono);
   cursor: pointer;
 }
-button:hover { border-color: var(--accent); color: var(--accent); }
+.actions button {
+  border: none;
+  background: transparent;
+  padding: 6px 11px;
+  border-radius: 7px;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: var(--ink-soft);
+  transition: color 0.12s, background 0.12s;
+}
+.actions button:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+body.debug #debug-toggle {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
 
+/* --- error surface ---------------------------------------------------------- */
 #error {
   display: none;
   white-space: pre-wrap;
-  font-family: "SF Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: #b00020;
-  background: #fdecef;
-  border-bottom: 1px solid #f3c0c8;
-  padding: 8px 16px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--paper));
+  border-bottom: 1px solid color-mix(in srgb, var(--danger) 30%, var(--paper));
+  padding: 10px 18px;
 }
 
+/* --- the page ---------------------------------------------------------------- */
 #workspace {
   display: flex;
   align-items: stretch;
+  min-height: calc(100vh - var(--header-h) - var(--status-h));
 }
 
-#editor {
+#page {
   flex: 1;
   min-width: 0;
-  max-width: 760px;
+  max-width: 720px;
   margin: 0 auto;
-  padding: 32px 24px 120px;
-  cursor: text;
+  padding: 56px 32px 30vh;
+  animation: settle-up 0.55s ease 0.06s both;
 }
 
-/* node inspector */
+#title {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 38px;
+  font-weight: 640;
+  font-variation-settings: "opsz" 60;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  padding: 0 0 6px;
+  margin: 0 0 6px;
+}
+#title::placeholder { color: var(--ink-faint); }
+
+/* --- the writing surface ----------------------------------------------------- */
+#editor { cursor: text; }
+
+.ProseMirror {
+  outline: none;
+  font-size: 18.5px;
+  line-height: 1.72;
+  min-height: 55vh;
+  caret-color: var(--accent);
+}
+
+.ProseMirror .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+.ProseMirror p { margin: 0 0 0.85em; }
+.ProseMirror > *:first-child { margin-top: 0; }
+
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3,
+.ProseMirror h4 {
+  font-family: var(--font-display);
+  font-weight: 620;
+  line-height: 1.22;
+  letter-spacing: -0.012em;
+  margin: 1.5em 0 0.45em;
+}
+.ProseMirror h1 { font-size: 1.72em; font-variation-settings: "opsz" 50; }
+.ProseMirror h2 { font-size: 1.36em; font-variation-settings: "opsz" 36; }
+.ProseMirror h3 { font-size: 1.14em; font-variation-settings: "opsz" 24; }
+
+.ProseMirror em { font-style: italic; }
+.ProseMirror strong { font-weight: 680; }
+
+.ProseMirror a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  transition: text-decoration-color 0.12s;
+}
+.ProseMirror a:hover { text-decoration-color: var(--accent); }
+
+.ProseMirror blockquote {
+  margin: 1.2em 0;
+  padding: 0.1em 0 0.1em 1.2em;
+  border-left: 2px solid var(--accent);
+  color: var(--ink-soft);
+  font-style: italic;
+}
+.ProseMirror blockquote p { margin-bottom: 0.5em; }
+
+.ProseMirror ul, .ProseMirror ol { padding-left: 1.45em; margin: 0 0 0.85em; }
+.ProseMirror li { margin: 0.18em 0; }
+.ProseMirror li::marker {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.ProseMirror code {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 0.08em 0.38em;
+}
+
+.ProseMirror pre {
+  background: var(--code-bg);
+  color: var(--code-ink);
+  border-radius: 10px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 1.2em 0;
+  font-size: 0.82em;
+  line-height: 1.6;
+}
+.ProseMirror pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* divider: a quiet asterism */
+.ProseMirror hr {
+  border: none;
+  margin: 2.2em 0;
+  text-align: center;
+}
+.ProseMirror hr::after {
+  content: "· · ·";
+  display: block;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.6em;
+  margin-left: 0.6em; /* recenters the letterspaced glyphs */
+}
+
+/* tables: hairline editorial grid */
+.ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.2em 0;
+  table-layout: fixed;
+  font-size: 0.92em;
+  line-height: 1.5;
+}
+.ProseMirror th,
+.ProseMirror td {
+  border: 1px solid var(--line);
+  padding: 8px 12px;
+  vertical-align: top;
+}
+.ProseMirror th {
+  background: var(--paper-deep);
+  border-bottom: 1.5px solid var(--line-strong);
+  font-weight: 640;
+  text-align: left;
+}
+.ProseMirror td p, .ProseMirror th p { margin: 0; }
+.ProseMirror .selectedCell { background: var(--selection); }
+
+/* --- status bar --------------------------------------------------------------- */
+#status {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 50;
+  height: var(--status-h);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 18px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--ink-faint);
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--line);
+  animation: settle-up 0.45s ease 0.12s both;
+}
+.status-spacer { flex: 1; }
+#status-hint { color: var(--ink-soft); }
+
+/* --- node inspector --------------------------------------------------------- */
 #debug {
   display: none;
-  width: 420px;
+  width: 400px;
   flex: none;
   border-left: 1px solid var(--line);
-  background: #fafafa;
+  background: var(--paper-deep);
+  color: var(--ink-soft);
   overflow: auto;
-  padding: 12px 14px;
-  font-family: "SF Mono", ui-monospace, monospace;
-  font-size: 12px;
-  line-height: 1.4;
+  max-height: calc(100vh - var(--header-h) - var(--status-h));
+  position: sticky;
+  top: var(--header-h);
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.45;
 }
-body.debug #debug { display: block; }
+body.debug #debug {
+  display: block;
+  animation: panel-in 0.22s ease both;
+}
 
 #debug summary {
   cursor: pointer;
   display: flex;
   gap: 8px;
   align-items: baseline;
-  padding: 2px 0;
+  padding: 3px 0;
+  list-style: none;
 }
+#debug summary::-webkit-details-marker { display: none; }
 #debug .ty { color: var(--accent); font-weight: 600; }
-#debug .path { color: var(--muted); }
-#debug .hash { color: #b07; margin-left: auto; }
+#debug .path { color: var(--ink-faint); }
+#debug .hash { margin-left: auto; color: var(--annotate); }
 #debug .nodejson {
-  margin: 2px 0 6px;
-  padding: 6px 8px;
-  background: #fff;
+  margin: 3px 0 8px;
+  padding: 8px 10px;
+  background: var(--paper-raised);
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 7px;
   white-space: pre-wrap;
   overflow-x: auto;
+  font-size: 10.5px;
+  color: var(--ink);
 }
-#debug .kids { margin-left: 14px; border-left: 1px dashed var(--line); padding-left: 8px; }
+#debug .kids {
+  margin-left: 13px;
+  border-left: 1px dashed var(--line-strong);
+  padding-left: 9px;
+}
 
-/* the ProseMirror editing surface */
-.ProseMirror {
-  outline: none;
-  font-size: 17px;
-  line-height: 1.65;
-  min-height: 70vh;
-}
-.ProseMirror p { margin: 0 0 0.8em; }
-.ProseMirror > *:first-child { margin-top: 0; }
-.ProseMirror h1 { font-size: 1.9em; }
-.ProseMirror h2 { font-size: 1.5em; }
-.ProseMirror h3 { font-size: 1.25em; }
-.ProseMirror blockquote {
-  border-left: 3px solid var(--line);
-  margin-left: 0;
-  padding-left: 16px;
-  color: var(--muted);
-}
-.ProseMirror pre {
-  background: #f5f5f7;
-  border-radius: 8px;
-  padding: 12px 16px;
-  overflow-x: auto;
-}
-.ProseMirror code { font-family: "SF Mono", ui-monospace, monospace; font-size: 0.9em; }
-.ProseMirror hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
-.ProseMirror a { color: var(--accent); }
-.ProseMirror table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 0 0 0.8em;
-  table-layout: fixed;
-}
-.ProseMirror th,
-.ProseMirror td {
-  border: 1px solid var(--line);
-  padding: 6px 10px;
-  vertical-align: top;
-}
-.ProseMirror th { background: #f5f5f7; font-weight: 600; text-align: left; }
-.ProseMirror td p,
-.ProseMirror th p { margin: 0; }
-.ProseMirror .selectedCell { background: rgba(0, 122, 255, 0.08); }
-
-/* contextual table controls */
+/* --- contextual table controls -------------------------------------------------- */
 .table-hover-btn {
   position: fixed;
   z-index: 30;
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px dashed var(--line);
-  border-radius: 4px;
-  background: #fafafa;
-  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--paper-raised);
+  color: var(--ink-soft);
   font-size: 12px;
   line-height: 1;
-  cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 .table-hover-btn:hover {
   background: var(--accent);
   border-color: var(--accent);
-  border-style: solid;
-  color: #fff;
+  color: var(--paper-raised);
 }
 .table-hover-btn[hidden] { display: none; }
 
 #table-menu {
   position: fixed;
   z-index: 40;
-  min-width: 170px;
+  min-width: 184px;
   display: flex;
   flex-direction: column;
-  padding: 4px;
-  background: #fff;
+  padding: 5px;
+  background: color-mix(in srgb, var(--paper-raised) 92%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-radius: 11px;
+  box-shadow: var(--shadow);
+  animation: menu-in 0.14s ease both;
 }
 #table-menu[hidden] { display: none; }
 #table-menu button {
   text-align: left;
-  font-size: 13px;
-  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  padding: 7px 11px;
   border: none;
-  border-radius: 5px;
+  border-radius: 7px;
   background: none;
-  cursor: pointer;
+  color: var(--ink);
+  transition: background 0.1s;
 }
-#table-menu button:hover { background: #f0f0f2; }
+#table-menu button:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+#table-menu button:last-child { color: var(--danger); }
+#table-menu button:last-child:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+/* --- scrollbars ------------------------------------------------------------------ */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--ink-faint); }
+
+/* --- motion ----------------------------------------------------------------------- */
+@keyframes settle-down {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes settle-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes menu-in {
+  from { opacity: 0; transform: scale(0.97) translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes save-pulse {
+  0% { color: var(--accent); }
+  100% { color: var(--ink-faint); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

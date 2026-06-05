@@ -14,7 +14,11 @@
       {
         "title": "Karanga",
         "width": 1040,
-        "height": 760
+        "height": 760,
+        "minWidth": 600,
+        "minHeight": 440,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {
