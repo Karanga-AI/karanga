@@ -4,9 +4,5 @@
   "attrs": {
     "header": true
   },
-  "content": [
-    {
-      "text": "Attempt"
-    }
-  ]
+  "content": "Attempt"
 }

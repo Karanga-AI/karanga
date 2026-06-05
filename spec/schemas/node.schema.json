@@ -14,42 +14,10 @@
       "pattern": "^[A-Za-z0-9_-]+(:[A-Za-z0-9_-]+)?$"
     },
     "content": {
-      "description": "Inline runs, a raw string, or omitted — per the type's content model.",
-      "oneOf": [
-        { "type": "array", "items": { "$ref": "#/$defs/run" } },
-        { "type": "string" }
-      ]
+      "type": "string",
+      "description": "A canonical Karanga Markdown inline string (§7) for inline types, an opaque string for raw types, omitted for empty content — per the type's content model (§6.3)."
     },
     "attrs": { "type": "object" },
-    "marks": {
-      "type": "object",
-      "description": "Node-local definitions for parametric marks (§7.2).",
-      "additionalProperties": { "$ref": "#/$defs/markDef" }
-    },
     "x": { "type": "object" }
-  },
-  "$defs": {
-    "run": {
-      "type": "object",
-      "required": ["text"],
-      "additionalProperties": false,
-      "properties": {
-        "text": { "type": "string" },
-        "marks": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Simple mark keywords (strong|em|code|strike) or keys into the node's marks table."
-        }
-      }
-    },
-    "markDef": {
-      "type": "object",
-      "required": ["type"],
-      "properties": {
-        "type": { "type": "string" },
-        "href": { "type": "string" },
-        "target": { "type": "string", "pattern": "^krg://" }
-      }
-    }
   }
 }

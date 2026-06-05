@@ -4,9 +4,5 @@
   "attrs": {
     "level": 2
   },
-  "content": [
-    {
-      "text": "Results"
-    }
-  ]
+  "content": "Results"
 }

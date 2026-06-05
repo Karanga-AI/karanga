@@ -1,46 +1,5 @@
 {
   "id": "p_intro",
   "type": "paragraph",
-  "marks": {
-    "lnk1": {
-      "type": "link",
-      "href": "https://example.com/gateway"
-    },
-    "ref1": {
-      "type": "ref",
-      "target": "krg:///h_meth"
-    }
-  },
-  "content": [
-    {
-      "text": "Retries are capped at "
-    },
-    {
-      "text": "three attempts",
-      "marks": [
-        "strong"
-      ]
-    },
-    {
-      "text": ". See "
-    },
-    {
-      "text": "the gateway guide",
-      "marks": [
-        "lnk1"
-      ]
-    },
-    {
-      "text": " and the "
-    },
-    {
-      "text": "Methods",
-      "marks": [
-        "ref1"
-      ]
-    },
-    {
-      "text": " section."
-    }
-  ]
+  "content": "Retries are capped at **three attempts**. See [the gateway guide](https://example.com/gateway) and the [Methods](krg:///h_meth) section."
 }

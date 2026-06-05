@@ -15,9 +15,7 @@ use crate::error::Error;
 use crate::hash::{content_hash, rev_of};
 use crate::id::{DocId, NodeId, Ref, Rev};
 use crate::tree::EditorBlock;
-use crate::model::{
-    Attrs, Link, Links, Manifest, MarkDef, MediaMode, Node, NodeContent, Spine, SpineEntry, Value,
-};
+use crate::model::{Attrs, Link, Links, Manifest, MediaMode, Node, Spine, SpineEntry, Value};
 use crate::render;
 use crate::Result;
 
@@ -112,13 +110,11 @@ impl Workspace {
         content: &str,
         attrs: Attrs,
     ) -> Result<(String, Rev)> {
-        let (content, marks) = build_content(ty, content);
         let node = Node {
             id: NodeId(ulid::Ulid::new().to_string()),
             ty: ty.to_string(),
-            content,
+            content: build_content(ty, content),
             attrs,
-            marks,
             ext: BTreeMap::new(),
         };
         self.add_built(place, node)
@@ -135,13 +131,12 @@ impl Workspace {
     }
 
     fn insert_block(&mut self, place: Place, block: render::Block) -> Result<String> {
-        let render::Block { ty, content, attrs, marks, children } = block;
+        let render::Block { ty, content, attrs, children } = block;
         let node = Node {
             id: NodeId(ulid::Ulid::new().to_string()),
             ty,
             content,
             attrs,
-            marks,
             ext: BTreeMap::new(),
         };
         let (id, _) = self.add_built(place, node)?;
@@ -186,13 +181,11 @@ impl Workspace {
             return Ok(Cas::Stale { current_rev, current });
         }
         let old = self.read_node(id)?;
-        let (content, marks) = build_content(&old.ty, content);
         let node = Node {
             id: NodeId(id.to_string()),
             ty: old.ty.clone(),
-            content,
+            content: build_content(&old.ty, content),
             attrs: old.attrs.clone(),
-            marks,
             ext: old.ext.clone(),
         };
         let hash = content_hash(&node)?;
@@ -361,13 +354,11 @@ impl Workspace {
         let mut out = Vec::new();
         for b in blocks {
             let id = b.id.unwrap_or_else(|| ulid::Ulid::new().to_string());
-            let (content, marks) = build_content(&b.ty, &b.content);
             let node = Node {
                 id: NodeId(id.clone()),
                 ty: b.ty.clone(),
-                content,
+                content: build_content(&b.ty, &b.content),
                 attrs: b.attrs,
-                marks,
                 ext: BTreeMap::new(),
             };
             let hash = content_hash(&node)?;
@@ -438,21 +429,21 @@ impl Workspace {
 
 // --- helpers ---------------------------------------------------------------
 
-fn build_content(ty: &str, md: &str) -> (NodeContent, BTreeMap<String, MarkDef>) {
+/// Build a node's stored content from authoring input: inline types are
+/// normalized to the canonical Karanga Markdown form (format §7), `code` is
+/// kept verbatim, containers/divider/media carry no content.
+fn build_content(ty: &str, md: &str) -> Option<String> {
     match ty {
-        "code" => (NodeContent::Raw(md.to_string()), BTreeMap::new()),
-        "heading" | "paragraph" | "table-cell" => {
-            let (runs, marks) = render::parse_inline(md);
-            (NodeContent::Inline(runs), marks)
-        }
-        _ => (NodeContent::Empty, BTreeMap::new()),
+        "code" => Some(md.to_string()),
+        "heading" | "paragraph" | "table-cell" => Some(render::normalize_inline(md)),
+        _ => None,
     }
 }
 
 fn plaintext(node: &Node) -> String {
     match &node.content {
-        NodeContent::Inline(runs) => runs.iter().map(|r| r.text.as_str()).collect(),
-        _ => String::new(),
+        Some(md) => render::strip_inline(md),
+        None => String::new(),
     }
 }
 

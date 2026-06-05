@@ -1,9 +1,5 @@
 {
   "id": "p_warn",
   "type": "paragraph",
-  "content": [
-    {
-      "text": "Never retry on 4xx responses."
-    }
-  ]
+  "content": "Never retry on 4xx responses."
 }

@@ -1,15 +1,13 @@
 //! In-memory document model (format §4–§8), (de)serialized from the JSON parts
 //! via `serde`.
 //!
-//! Serialization mirrors the on-disk shape exactly (empty `attrs`/`marks`/`x`
-//! and `Empty` content are omitted; `ty`→`type`, `ext`→`x`) so that
-//! re-serializing a parsed node and hashing it reproduces the stored hash.
+//! Serialization mirrors the on-disk shape exactly (empty `attrs`/`x` and
+//! absent content are omitted; `ty`→`type`, `ext`→`x`) so that re-serializing
+//! a parsed node and hashing it reproduces the stored hash.
 
 use std::collections::BTreeMap;
-use std::fmt;
 
-use serde::de::{self, Deserializer, SeqAccess, Visitor};
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 use crate::id::{DocId, NodeId, Ref};
 use crate::schema::TypeDescriptor;
@@ -30,84 +28,21 @@ pub enum Value {
 pub type Attrs = BTreeMap<String, Value>;
 
 /// One atomic node — a `nodes/<id>.json` part.
+///
+/// `content` is a single string or absent; its *interpretation* comes from the
+/// type's content model (format §6.3): canonical Karanga Markdown inline
+/// syntax for `inline` types (§7), an opaque string for `raw` types.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Node {
     pub id: NodeId,
     #[serde(rename = "type")]
     pub ty: String,
-    #[serde(default, skip_serializing_if = "content_is_empty")]
-    pub content: NodeContent,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
     #[serde(default, skip_serializing_if = "map_is_empty")]
     pub attrs: Attrs,
-    #[serde(default, skip_serializing_if = "map_is_empty")]
-    pub marks: BTreeMap<String, MarkDef>,
     #[serde(default, rename = "x", skip_serializing_if = "map_is_empty")]
     pub ext: Attrs,
-}
-
-/// A node's own payload, per its type's content model.
-#[derive(Debug, Clone, Default)]
-pub enum NodeContent {
-    #[default]
-    Empty,
-    Inline(Vec<Run>),
-    Raw(String),
-}
-
-// `content` is an array of runs, a raw string, or absent.
-impl<'de> Deserialize<'de> for NodeContent {
-    fn deserialize<D>(d: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct V;
-        impl<'de> Visitor<'de> for V {
-            type Value = NodeContent;
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str("inline runs or a raw string")
-            }
-            fn visit_str<E: de::Error>(self, s: &str) -> std::result::Result<NodeContent, E> {
-                Ok(NodeContent::Raw(s.to_string()))
-            }
-            fn visit_seq<A: SeqAccess<'de>>(
-                self,
-                seq: A,
-            ) -> std::result::Result<NodeContent, A::Error> {
-                let runs = Vec::<Run>::deserialize(de::value::SeqAccessDeserializer::new(seq))?;
-                Ok(NodeContent::Inline(runs))
-            }
-        }
-        d.deserialize_any(V)
-    }
-}
-
-impl Serialize for NodeContent {
-    fn serialize<S: Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
-        match self {
-            NodeContent::Empty => s.serialize_none(), // skipped in practice
-            NodeContent::Inline(runs) => runs.serialize(s),
-            NodeContent::Raw(t) => s.serialize_str(t),
-        }
-    }
-}
-
-/// A run of text carrying zero or more marks (format §7).
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Run {
-    pub text: String,
-    #[serde(default, skip_serializing_if = "vec_is_empty")]
-    pub marks: Vec<String>,
-}
-
-/// A parametric mark definition (format §7.2).
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct MarkDef {
-    #[serde(rename = "type")]
-    pub ty: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub href: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<Ref>,
 }
 
 /// Document metadata (`manifest.json`, format §4).
@@ -181,12 +116,6 @@ pub struct Links {
 
 // --- serde skip helpers ----------------------------------------------------
 
-fn content_is_empty(c: &NodeContent) -> bool {
-    matches!(c, NodeContent::Empty)
-}
 fn map_is_empty<K, V>(m: &BTreeMap<K, V>) -> bool {
     m.is_empty()
-}
-fn vec_is_empty<T>(v: &Vec<T>) -> bool {
-    v.is_empty()
 }

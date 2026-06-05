@@ -26,7 +26,7 @@ pub mod workspace;
 
 pub use error::{Error, Result};
 pub use id::{DocId, NodeId, Ref, Rev};
-pub use model::{Node, NodeContent, Run};
+pub use model::Node;
 
 /// The format spec version this build targets.
 pub const FORMAT_VERSION: &str = "0.1";

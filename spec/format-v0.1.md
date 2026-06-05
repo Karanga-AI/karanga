@@ -223,7 +223,7 @@ shape of `content` and `attrs` is type-specific.
 {
   "id": "p_1",
   "type": "paragraph",
-  "content": [ /* inline runs (§7), a raw string, or omitted — per the type's content model (§6.2) */ ],
+  "content": "…", /* a Karanga Markdown inline string (§7), a raw string, or omitted — per the type's content model (§6.2) */
   "attrs": {},
   "x": {}
 }
@@ -267,7 +267,7 @@ the base schema; additional types are namespaced and document-declared (§6.4).
 - **Nested lists** = a `list-item` with a `list` child; **multi-block** quotes/items = a
   `blockquote`/`list-item` with several block children. Both fall out of the generic container
   model — no special casing. A simple item or quote wraps its text in a `paragraph` child, so
-  that only inline-content types carry runs directly.
+  that only inline-content types carry text directly.
 
 ### 6.3 Type descriptors
 
@@ -281,8 +281,8 @@ A descriptor declares a type's shape:
 }
 ```
 
-- **`content`** — the node's own payload: `empty` (none), `inline` (an array of runs, §7), or
-  `raw` (an opaque string, e.g. code).
+- **`content`** — the node's own payload: `empty` (none), `inline` (a canonical Karanga
+  Markdown inline string, §7), or `raw` (an opaque string, e.g. code).
 - **`children`** — allowed child types (a list, or the `block` shorthand). Present ⇒ the type is
   a container. A type MAY be *both* inline-content and a container (e.g. `heading`: an inline
   title plus a block section).
@@ -311,7 +311,7 @@ The vocabulary is open. A document MAY use types beyond the base schema; each su
 
 - A reader **MUST** validate and **structurally render** a declared custom type from its
   descriptor — a container renders its children in reading order; an inline type renders its
-  runs — even when it cannot render the type *richly*. A client that recognizes the type renders
+  text — even when it cannot render the type *richly*. A client that recognizes the type renders
   it natively.
 - A type that is neither in the base schema nor declared in `types` makes the document
   **invalid**. A `.krg` therefore always carries enough to render its own structure
@@ -321,52 +321,50 @@ The vocabulary is open. A document MAY use types beyond the base schema; each su
 ## 7. Inline content model
 
 Nodes whose content model is `inline` (`heading`, `paragraph`, `table-cell`, and any custom
-inline type) carry `content` as an ordered array of **runs**.
+inline type) carry `content` as a single string of **canonical Karanga Markdown inline
+syntax** (the inline subset of the dialect, interface §8).
 
 ```json
-"content": [
-  { "text": "Retries are capped at " },
-  { "text": "three attempts", "marks": ["strong"] },
-  { "text": ". See ", "marks": [] },
-  { "text": "the gateway doc", "marks": ["lnk1"] },
-  { "text": "." }
-]
+"content": "Retries are capped at **three attempts**. See [the gateway doc](https://example.com/gateway)."
 ```
 
-- A **run** is `{ "text": string, "marks"?: string[] }`.
-- A mark token is either a **simple mark** keyword or a key into the node's `marks` table for
-  **parametric marks**.
-- The **plain text** of a node is the concatenation of its runs' `text`, in order. Agents
-  reading for content **SHOULD** use this projection — it is markup-free prose.
+*(Supersedes the runs+marks array model ratified 2026-06-01: once the dialect was fixed as a
+lossless round-trip (interface §8), the structured form carried no information the canonical
+string doesn't — it was redundant, heavier on disk, and had an unspecified run-splitting
+normalization, which made hashing ambiguous. Reversed 2026-06-04.)*
 
-### 7.1 Simple marks (v0.1)
+### 7.1 Inline syntax (v0.1)
 
-`strong`, `em`, `code`, `strike`. Carried as bare keywords in a run's `marks`.
+- **Simple marks** — `**strong**`, `*em*`, `` `code` ``, `~~strike~~`.
+- **Links** — `[text](href)`. A destination beginning `krg://` is an internal **reference**
+  to another node/document; anything else is an external link. Every inline `krg://` link
+  **MUST** have a corresponding entry in `links.json` (§8.3); the inline form is for
+  rendering, the link record is for the queryable graph.
+- No other inline construct is part of the v0.1 dialect. Custom *inline* types are deferred
+  (interface §8).
 
-### 7.2 Parametric marks
+### 7.2 Canonical form
 
-Marks that need attributes (e.g. links) are defined in a node-local `marks` table and
-referenced by key:
+So that equal content always hashes equally (§9), writers **MUST** store the **canonical
+form**, defined as the output of the normative normalizer (parse the inline fragment with the
+dialect's grammar, then re-emit):
 
-```json
-{
-  "id": "p_3",
-  "type": "paragraph",
-  "marks": {
-    "lnk1": { "type": "link", "href": "https://example.com/gateway" },
-    "ref1": { "type": "ref",  "target": "krg://9f1c…/h_methods" }
-  },
-  "content": [
-    { "text": "an external link", "marks": ["lnk1"] },
-    { "text": " and an internal one", "marks": ["ref1"] }
-  ]
-}
-```
+- emphasis delimiters are always `*` / `**` (never `_` / `__`); strikethrough is `~~`;
+- code spans use the shortest backtick fence longer than any backtick run in the content,
+  space-padded when the content starts or ends with a backtick;
+- link destinations are wrapped in `<…>` only when they contain a space or parenthesis;
+- soft/hard breaks collapse to a single space (inline content is one logical line);
+- in plain text the characters `` \ ` * _ [ ] < ~ `` are backslash-escaped, `&` is escaped
+  only where it would otherwise read as a character entity, and a leading `#`, `>`, `-`, `+`
+  (or the `.`/`)` of a leading ordinal like `1.`) is escaped so a stored string can never
+  re-parse as a different block;
+- normalization is **idempotent**: the canonical form is a fixpoint of the normalizer.
 
-- `link` — `{ "type": "link", "href": string }`.
-- `ref` — `{ "type": "ref", "target": <krg:// reference> }`. An inline reference to another
-  node/document. Every `ref` mark **MUST** have a corresponding entry in `links.json` (§8.3);
-  the inline mark is for rendering, the link record is for the queryable graph.
+### 7.3 Plain text
+
+The **plain text** of a node is its content with markup stripped (parse, concatenate text).
+Agents reading for content **SHOULD** use this projection — it is markup-free prose. The
+spine `label` of a heading (§5.2) is its plain text.
 
 ## 8. Media
 
@@ -409,8 +407,8 @@ scanning prose.
 
 - An intra-document `to` **MUST** resolve to an existing node; an inter-document `to` **MAY**
   dangle (the target document may be absent).
-- Every inline `ref` mark (§7.2) **MUST** be reflected here; the reverse is not required
-  (links may exist without inline marks).
+- Every inline `krg://` link (§7.1) **MUST** be reflected here; the reverse is not required
+  (links may exist without an inline occurrence).
 
 ## 9. Content hashing & integrity
 
@@ -454,7 +452,7 @@ hashed (i.e. all document data):
 - **Extension node types** are namespaced (`acme:callout`) and declared in the manifest `types`
   registry with a descriptor (§6.4); readers render them structurally from the descriptor. The
   vocabulary grows by **schema, not by spec version** — adding a custom type needs no `MAJOR`/
-  `MINOR` bump. Extension **mark types** are likewise namespaced. A non-base type that is *not*
+  `MINOR` bump. (Custom *inline* constructs are deferred, §7.1.) A non-base type that is *not*
   declared is invalid (§6.4); declared-but-unrecognized types are preserved and rendered
   structurally.
 - **`x` bags** (on manifest, nodes, authors, …) hold arbitrary namespaced data. Keys

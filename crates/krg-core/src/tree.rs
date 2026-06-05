@@ -58,13 +58,12 @@ fn build_inspect(blocks: Vec<render::Block>, prefix: &str) -> Vec<InspectNode> {
             } else {
                 format!("{prefix}.{i}")
             };
-            let render::Block { ty, content, attrs, marks, children } = b;
+            let render::Block { ty, content, attrs, children } = b;
             let node = Node {
                 id: NodeId(path.clone()),
                 ty: ty.clone(),
                 content,
                 attrs,
-                marks,
                 ext: Attrs::new(),
             };
             let hash = content_hash(&node).unwrap_or_default();

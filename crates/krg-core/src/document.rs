@@ -11,7 +11,7 @@ use crate::container::{DirStore, Store, ZipStore};
 use crate::error::Error;
 use crate::hash::{content_hash, rev_of};
 use crate::id::{NodeId, Ref, Rev};
-use crate::model::{Link, Links, Manifest, Node, NodeContent, Spine, SpineEntry, Value};
+use crate::model::{Link, Links, Manifest, Node, Spine, SpineEntry, Value};
 use crate::query::Direction;
 use crate::render;
 use crate::tree::EditorBlock;
@@ -165,18 +165,14 @@ impl Document {
     }
 
     /// Produce the editor document tree (engine → WYSIWYG client). Inline
-    /// content is rendered to Karanga Markdown; container children nest.
+    /// content is already canonical Karanga Markdown; container children nest.
     pub fn to_tree(&self) -> Result<Vec<EditorBlock>> {
         self.spine.root.iter().map(|e| self.block_of(e)).collect()
     }
 
     fn block_of(&self, e: &SpineEntry) -> Result<EditorBlock> {
         let node = self.read_node(&e.id.0)?;
-        let content = match &node.content {
-            NodeContent::Inline(_) => render::inline_markdown(&node),
-            NodeContent::Raw(s) => s.clone(),
-            NodeContent::Empty => String::new(),
-        };
+        let content = node.content.clone().unwrap_or_default();
         let children = e
             .children
             .iter()
@@ -430,9 +426,11 @@ fn outline_walk(e: &SpineEntry, depth: usize, out: &mut String) {
 
 fn node_plaintext(node: &Node) -> String {
     match &node.content {
-        NodeContent::Inline(runs) => runs.iter().map(|r| r.text.as_str()).collect(),
-        NodeContent::Raw(s) => s.clone(),
-        NodeContent::Empty => String::new(),
+        // Inline content is canonical markdown → strip it; raw (`code`) is
+        // already plain text.
+        Some(md) if node.ty == "code" => md.clone(),
+        Some(md) => render::strip_inline(md),
+        None => String::new(),
     }
 }
 

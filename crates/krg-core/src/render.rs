@@ -1,15 +1,14 @@
 //! Schema-driven projection (read side) and authoring parse (write side).
 //!
-//! Read: nodes → Karanga Markdown (interface §3, §8). This slice renders a
-//! single node's own content; whole-section/document rendering (walking the
-//! spine, container children) lands in a later slice.
-
-use std::collections::BTreeMap;
+//! Read: nodes → Karanga Markdown (interface §3, §8). Inline content is stored
+//! *as* canonical Karanga Markdown (format §7), so rendering a text-bearing
+//! node is direct; this module also owns the normative normalizer
+//! ([`normalize_inline`]) that produces the canonical form on write, and the
+//! plaintext projection ([`strip_inline`]).
 
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
-use crate::id::Ref;
-use crate::model::{Attrs, MarkDef, Node, NodeContent, Run, Value};
+use crate::model::{Attrs, Node, Value};
 use crate::Result;
 
 /// Render a single node to Karanga Markdown.
@@ -17,21 +16,17 @@ pub fn render_node(node: &Node) -> String {
     match node.ty.as_str() {
         "heading" => {
             let level = attr_int(node, "level").unwrap_or(1).clamp(1, 6) as usize;
-            format!("{} {}", "#".repeat(level), inline_markdown(node))
+            format!("{} {}", "#".repeat(level), content_str(node))
         }
-        "paragraph" => inline_markdown(node),
-        "table-cell" => inline_markdown(node),
+        "paragraph" => content_str(node).to_string(),
+        "table-cell" => content_str(node).to_string(),
         "code" => {
             let lang = attr_str(node, "language").unwrap_or("");
-            let body = match &node.content {
-                NodeContent::Raw(s) => s.as_str(),
-                _ => "",
-            };
-            format!("```{lang}\n{body}\n```")
+            format!("```{lang}\n{}\n```", content_str(node))
         }
         "divider" => "---".to_string(),
         // Containers: own content is empty; children are rendered by section/
-        // document rendering (later slice). Render a minimal shell.
+        // document rendering. Render a minimal shell.
         "blockquote" => "> ".to_string(),
         "media" => {
             let alt = attr_str(node, "alt").unwrap_or("");
@@ -42,8 +37,12 @@ pub fn render_node(node: &Node) -> String {
             format!("![{alt}]({src})")
         }
         t if t.contains(':') => format!(":::{t}\n:::"), // declared custom block type
-        _ => inline_markdown(node), // list / list-item / table / table-row → empty own content
+        _ => content_str(node).to_string(), // list / list-item / table / table-row → empty own content
     }
+}
+
+fn content_str(node: &Node) -> &str {
+    node.content.as_deref().unwrap_or("")
 }
 
 /// Render whole documents (pre-order DFS of the spine) — later slice.
@@ -51,64 +50,162 @@ pub fn render_document() -> Result<String> {
     unimplemented!("document render")
 }
 
-/// Parse the inline content of a single text-bearing block (paragraph, heading,
-/// table-cell) into runs + a node-local mark table. Uses `pulldown-cmark`;
-/// block structure is ignored (the caller supplies inline content).
-pub fn parse_inline(md: &str) -> (Vec<Run>, BTreeMap<String, MarkDef>) {
+// === canonical inline form (format §7) =======================================
+//
+// Inline content is stored as a single string of *canonical* Karanga Markdown
+// inline syntax. The canonical form is whatever this writer emits from the
+// parsed event stream: `**strong**`, `*em*`, `~~strike~~`, backtick code
+// spans, `[text](dest)` links (a `krg://` dest is an internal ref), single
+// spaces for soft/hard breaks, and backslash-escaped markup characters in
+// plain text. Normalization (parse → re-emit) is idempotent; hashing the
+// stored string is therefore deterministic.
+
+/// Builds the canonical inline string from `pulldown-cmark` inline events.
+struct InlineWriter {
+    out: String,
+    /// Destination stack for open links.
+    links: Vec<String>,
+}
+
+impl InlineWriter {
+    fn new() -> Self {
+        InlineWriter { out: String::new(), links: Vec::new() }
+    }
+
+    /// Consume one event. Returns `false` if the event is not inline content
+    /// (a block boundary) — the caller stops feeding.
+    fn event(&mut self, ev: &Event) -> bool {
+        match ev {
+            Event::Text(s) => self.text(s),
+            Event::Code(s) => self.code_span(s),
+            Event::SoftBreak | Event::HardBreak => self.out.push(' '),
+            Event::Start(Tag::Strong) => self.out.push_str("**"),
+            Event::End(TagEnd::Strong) => self.out.push_str("**"),
+            Event::Start(Tag::Emphasis) => self.out.push('*'),
+            Event::End(TagEnd::Emphasis) => self.out.push('*'),
+            Event::Start(Tag::Strikethrough) => self.out.push_str("~~"),
+            Event::End(TagEnd::Strikethrough) => self.out.push_str("~~"),
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                self.links.push(dest_url.to_string());
+                self.out.push('[');
+            }
+            Event::End(TagEnd::Link) => {
+                let dest = self.links.pop().unwrap_or_default();
+                self.out.push_str("](");
+                self.out.push_str(&link_dest(&dest));
+                self.out.push(')');
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// Escaped plain text. Block-introducing characters are additionally
+    /// escaped at the very start of the string so a stored paragraph can never
+    /// re-parse as a heading/quote/list when fed back through the dialect.
+    fn text(&mut self, s: &str) {
+        for (i, c) in s.char_indices() {
+            let escape = match c {
+                '\\' | '`' | '*' | '_' | '[' | ']' | '<' | '~' => true,
+                '&' => entity_follows(&s[i..]),
+                '#' | '>' | '-' | '+' => self.out.is_empty(),
+                '.' | ')' => {
+                    // "1. " / "1) " at string start would re-parse as a list
+                    // item. Everything emitted so far being digits is checked
+                    // against the output, so it spans split text events.
+                    !self.out.is_empty() && self.out.chars().all(|d| d.is_ascii_digit())
+                }
+                _ => false,
+            };
+            if escape {
+                self.out.push('\\');
+            }
+            self.out.push(c);
+        }
+    }
+
+    /// A code span, with a fence longer than any backtick run inside it and
+    /// space padding when the content begins/ends with a backtick.
+    fn code_span(&mut self, s: &str) {
+        let longest = s
+            .split(|c| c != '`')
+            .map(str::len)
+            .max()
+            .unwrap_or(0);
+        let fence = "`".repeat(longest + 1);
+        let pad = s.starts_with('`') || s.ends_with('`');
+        self.out.push_str(&fence);
+        if pad {
+            self.out.push(' ');
+        }
+        self.out.push_str(s);
+        if pad {
+            self.out.push(' ');
+        }
+        self.out.push_str(&fence);
+    }
+
+    fn finish(self) -> String {
+        self.out
+    }
+}
+
+/// True when `s` (starting with `&`) begins a character entity reference,
+/// which CommonMark would decode; a bare ampersand needs no escape.
+fn entity_follows(s: &str) -> bool {
+    let rest = &s[1..];
+    let body: String = rest.chars().take_while(|c| *c != ';').collect();
+    if !rest[body.len()..].starts_with(';') || body.is_empty() {
+        return false;
+    }
+    if let Some(num) = body.strip_prefix('#') {
+        let hex = num.strip_prefix(['x', 'X']);
+        return match hex {
+            Some(h) => !h.is_empty() && h.chars().all(|c| c.is_ascii_hexdigit()),
+            None => !num.is_empty() && num.chars().all(|c| c.is_ascii_digit()),
+        };
+    }
+    body.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+        && body.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
+/// Wrap a link destination in `<…>` when it contains characters that would
+/// break the bare `(dest)` form.
+fn link_dest(dest: &str) -> String {
+    if dest.chars().any(|c| c == ' ' || c == '(' || c == ')') {
+        format!("<{dest}>")
+    } else {
+        dest.to_string()
+    }
+}
+
+/// Normalize an inline Karanga Markdown fragment to its canonical form
+/// (format §7): parse, then re-emit through the canonical writer. Block
+/// structure in the input is ignored — text is concatenated.
+pub fn normalize_inline(md: &str) -> String {
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_STRIKETHROUGH);
-    let mut runs = Vec::new();
-    let mut marks = BTreeMap::new();
-    let mut active: Vec<String> = Vec::new();
-    let mut link: Option<String> = None;
-    let mut ctr = 0u32;
+    let mut w = InlineWriter::new();
+    for ev in Parser::new_ext(md, opts) {
+        let _ = w.event(&ev); // non-inline events are simply skipped
+    }
+    w.finish()
+}
 
+/// The plaintext projection of inline content (format §7): markup stripped,
+/// breaks collapsed to spaces.
+pub fn strip_inline(md: &str) -> String {
+    let mut opts = Options::empty();
+    opts.insert(Options::ENABLE_STRIKETHROUGH);
+    let mut s = String::new();
     for ev in Parser::new_ext(md, opts) {
         match ev {
-            Event::Start(Tag::Strong) => active.push("strong".into()),
-            Event::End(TagEnd::Strong) => pop_mark(&mut active, "strong"),
-            Event::Start(Tag::Emphasis) => active.push("em".into()),
-            Event::End(TagEnd::Emphasis) => pop_mark(&mut active, "em"),
-            Event::Start(Tag::Strikethrough) => active.push("strike".into()),
-            Event::End(TagEnd::Strikethrough) => pop_mark(&mut active, "strike"),
-            Event::Start(Tag::Link { dest_url, .. }) => {
-                ctr += 1;
-                let key = format!("m{ctr}");
-                let def = if dest_url.starts_with("krg://") {
-                    MarkDef { ty: "ref".into(), href: None, target: Some(Ref(dest_url.to_string())) }
-                } else {
-                    MarkDef { ty: "link".into(), href: Some(dest_url.to_string()), target: None }
-                };
-                marks.insert(key.clone(), def);
-                link = Some(key);
-            }
-            Event::End(TagEnd::Link) => link = None,
-            Event::Code(s) => push_run(&mut runs, s.to_string(), &active, Some("code"), &link),
-            Event::Text(s) => push_run(&mut runs, s.to_string(), &active, None, &link),
-            Event::SoftBreak | Event::HardBreak => {
-                push_run(&mut runs, " ".to_string(), &active, None, &link)
-            }
+            Event::Text(t) | Event::Code(t) => s.push_str(&t),
+            Event::SoftBreak | Event::HardBreak => s.push(' '),
             _ => {}
         }
     }
-    (runs, marks)
-}
-
-fn pop_mark(active: &mut Vec<String>, m: &str) {
-    if let Some(p) = active.iter().rposition(|x| x == m) {
-        active.remove(p);
-    }
-}
-
-fn push_run(runs: &mut Vec<Run>, text: String, active: &[String], extra: Option<&str>, link: &Option<String>) {
-    let mut marks: Vec<String> = active.to_vec();
-    if let Some(e) = extra {
-        marks.push(e.to_string());
-    }
-    if let Some(k) = link {
-        marks.push(k.clone());
-    }
-    runs.push(Run { text, marks });
+    s
 }
 
 // === block-level parsing (authoring whole Markdown fragments) ===============
@@ -118,9 +215,10 @@ fn push_run(runs: &mut Vec<Run>, text: String, active: &[String], extra: Option<
 #[derive(Debug, Clone)]
 pub struct Block {
     pub ty: String,
-    pub content: NodeContent,
+    /// Canonical inline markdown for text-bearing types, raw text for `code`,
+    /// `None` for containers/divider.
+    pub content: Option<String>,
     pub attrs: Attrs,
-    pub marks: BTreeMap<String, MarkDef>,
     pub children: Vec<Block>,
 }
 
@@ -183,22 +281,21 @@ fn block_seq(ev: &[Event], i: &mut usize, ctx: Ctx) -> Vec<Block> {
                 *i += 1;
                 match tag {
                     Tag::Heading { level, .. } => {
-                        let (runs, marks) = collect_inline(ev, i);
+                        let inline = collect_inline(ev, i);
                         consume_end(ev, i);
                         let mut attrs = Attrs::new();
                         attrs.insert("level".into(), Value::Int(hlevel(level)));
                         out.push(Block {
                             ty: "heading".into(),
-                            content: NodeContent::Inline(runs),
+                            content: Some(inline),
                             attrs,
-                            marks,
                             children: Vec::new(),
                         });
                     }
                     Tag::Paragraph => {
-                        let (runs, marks) = collect_inline(ev, i);
+                        let inline = collect_inline(ev, i);
                         consume_end(ev, i);
-                        out.push(inline_block("paragraph", runs, marks));
+                        out.push(inline_block("paragraph", inline));
                     }
                     Tag::CodeBlock(kind) => {
                         let code = collect_text(ev, i);
@@ -211,9 +308,8 @@ fn block_seq(ev: &[Event], i: &mut usize, ctx: Ctx) -> Vec<Block> {
                         }
                         out.push(Block {
                             ty: "code".into(),
-                            content: NodeContent::Raw(code),
+                            content: Some(code),
                             attrs,
-                            marks: BTreeMap::new(),
                             children: Vec::new(),
                         });
                     }
@@ -229,9 +325,8 @@ fn block_seq(ev: &[Event], i: &mut usize, ctx: Ctx) -> Vec<Block> {
                         attrs.insert("ordered".into(), Value::Bool(start.is_some()));
                         out.push(Block {
                             ty: "list".into(),
-                            content: NodeContent::Empty,
+                            content: None,
                             attrs,
-                            marks: BTreeMap::new(),
                             children: items,
                         });
                     }
@@ -240,11 +335,11 @@ fn block_seq(ev: &[Event], i: &mut usize, ctx: Ctx) -> Vec<Block> {
             }
             // anything else at block position is inline → an implicit paragraph
             _ => {
-                let (runs, marks) = collect_inline(ev, i);
-                if runs.is_empty() {
+                let inline = collect_inline(ev, i);
+                if inline.is_empty() {
                     *i += 1; // ensure progress on unhandled events
                 } else {
-                    out.push(inline_block("paragraph", runs, marks));
+                    out.push(inline_block("paragraph", inline));
                 }
             }
         }
@@ -268,40 +363,16 @@ fn list_items(ev: &[Event], i: &mut usize) -> Vec<Block> {
     items
 }
 
-fn collect_inline(ev: &[Event], i: &mut usize) -> (Vec<Run>, BTreeMap<String, MarkDef>) {
-    let mut runs = Vec::new();
-    let mut marks = BTreeMap::new();
-    let mut active: Vec<String> = Vec::new();
-    let mut link: Option<String> = None;
-    let mut ctr = 0u32;
+/// Collect one block's inline events into the canonical inline string.
+fn collect_inline(ev: &[Event], i: &mut usize) -> String {
+    let mut w = InlineWriter::new();
     while *i < ev.len() {
-        match &ev[*i] {
-            Event::Text(s) => push_run(&mut runs, s.to_string(), &active, None, &link),
-            Event::Code(s) => push_run(&mut runs, s.to_string(), &active, Some("code"), &link),
-            Event::SoftBreak | Event::HardBreak => push_run(&mut runs, " ".into(), &active, None, &link),
-            Event::Start(Tag::Strong) => active.push("strong".into()),
-            Event::End(TagEnd::Strong) => pop_mark(&mut active, "strong"),
-            Event::Start(Tag::Emphasis) => active.push("em".into()),
-            Event::End(TagEnd::Emphasis) => pop_mark(&mut active, "em"),
-            Event::Start(Tag::Strikethrough) => active.push("strike".into()),
-            Event::End(TagEnd::Strikethrough) => pop_mark(&mut active, "strike"),
-            Event::Start(Tag::Link { dest_url, .. }) => {
-                ctr += 1;
-                let key = format!("m{ctr}");
-                let def = if dest_url.starts_with("krg://") {
-                    MarkDef { ty: "ref".into(), href: None, target: Some(Ref(dest_url.to_string())) }
-                } else {
-                    MarkDef { ty: "link".into(), href: Some(dest_url.to_string()), target: None }
-                };
-                marks.insert(key.clone(), def);
-                link = Some(key);
-            }
-            Event::End(TagEnd::Link) => link = None,
-            _ => break, // a block boundary
+        if !w.event(&ev[*i]) {
+            break; // a block boundary
         }
         *i += 1;
     }
-    (runs, marks)
+    w.finish()
 }
 
 fn collect_text(ev: &[Event], i: &mut usize) -> String {
@@ -388,65 +459,15 @@ fn hlevel(l: HeadingLevel) -> i64 {
 }
 
 fn empty_block(ty: &str) -> Block {
-    Block { ty: ty.into(), content: NodeContent::Empty, attrs: Attrs::new(), marks: BTreeMap::new(), children: Vec::new() }
+    Block { ty: ty.into(), content: None, attrs: Attrs::new(), children: Vec::new() }
 }
 
-fn inline_block(ty: &str, runs: Vec<Run>, marks: BTreeMap<String, MarkDef>) -> Block {
-    Block { ty: ty.into(), content: NodeContent::Inline(runs), attrs: Attrs::new(), marks, children: Vec::new() }
+fn inline_block(ty: &str, inline: String) -> Block {
+    Block { ty: ty.into(), content: Some(inline), attrs: Attrs::new(), children: Vec::new() }
 }
 
 fn container(ty: &str, children: Vec<Block>) -> Block {
-    Block { ty: ty.into(), content: NodeContent::Empty, attrs: Attrs::new(), marks: BTreeMap::new(), children }
-}
-
-/// Render a text-bearing node's inline content to Karanga Markdown (no block
-/// syntax). Used by `render_node` and by the editor tree projection.
-pub fn inline_markdown(node: &Node) -> String {
-    let runs = match &node.content {
-        NodeContent::Inline(r) => r,
-        _ => return String::new(),
-    };
-    let mut s = String::new();
-    for run in runs {
-        s.push_str(&apply_marks(&run.text, &run.marks, &node.marks));
-    }
-    s
-}
-
-fn apply_marks(text: &str, marks: &[String], defs: &BTreeMap<String, MarkDef>) -> String {
-    let mut t = text.to_string();
-    // simple marks, inner → outer
-    if marks.iter().any(|m| m == "code") {
-        t = format!("`{t}`");
-    }
-    if marks.iter().any(|m| m == "strike") {
-        t = format!("~~{t}~~");
-    }
-    if marks.iter().any(|m| m == "em") {
-        t = format!("*{t}*");
-    }
-    if marks.iter().any(|m| m == "strong") {
-        t = format!("**{t}**");
-    }
-    // parametric marks (link/ref) wrap outermost
-    for m in marks {
-        if let Some(def) = defs.get(m) {
-            match def.ty.as_str() {
-                "link" => {
-                    if let Some(h) = &def.href {
-                        t = format!("[{t}]({h})");
-                    }
-                }
-                "ref" => {
-                    if let Some(target) = &def.target {
-                        t = format!("[{t}]({})", target.0);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    t
+    Block { ty: ty.into(), content: None, attrs: Attrs::new(), children }
 }
 
 fn attr_str<'a>(node: &'a Node, key: &str) -> Option<&'a str> {
@@ -460,5 +481,72 @@ fn attr_int(node: &Node, key: &str) -> Option<i64> {
     match node.attrs.get(key) {
         Some(Value::Int(i)) => Some(*i),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_inline, strip_inline};
+
+    /// The canonical form is a fixpoint of the normalizer — required for
+    /// deterministic hashing (format §7, §9).
+    #[test]
+    fn normalize_is_idempotent() {
+        let inputs = [
+            "plain text",
+            "a *em* **strong** ~~strike~~ `code` mix",
+            "literal 2*3=6, snake_case, [brackets], a\\backslash, `tick",
+            "[ext](https://example.com/a) and [ref](krg:///n1)",
+            "AT&T stays bare but &amp; is escaped",
+            "#not-a-heading and - dash first",
+            "1. not a list",
+            "nested ***both*** and **outer *inner* rest**",
+        ];
+        for md in inputs {
+            let once = normalize_inline(md);
+            assert_eq!(normalize_inline(&once), once, "not a fixpoint for {md:?}");
+        }
+    }
+
+    /// Markup characters in literal prose are escaped in the stored form and
+    /// recovered exactly by the plaintext projection.
+    #[test]
+    fn escaping_round_trips_literal_text() {
+        let cases = [
+            ("2\\*3=6 and snake\\_case", "2*3=6 and snake_case"),
+            ("\\[not a link\\]", "[not a link]"),
+            ("&amp; is an ampersand", "& is an ampersand"),
+        ];
+        for (md, plain) in cases {
+            let canon = normalize_inline(md);
+            assert_eq!(strip_inline(&canon), plain);
+            assert_eq!(normalize_inline(&canon), canon);
+        }
+    }
+
+    /// Backticks inside code spans get a longer fence and padding.
+    #[test]
+    fn code_span_fencing() {
+        let canon = normalize_inline("``a ` b``");
+        assert_eq!(canon, "``a ` b``");
+        assert_eq!(strip_inline(&canon), "a ` b");
+    }
+
+    /// Block-introducing characters at the start of a paragraph's text are
+    /// escaped so the stored string cannot re-parse as a different block.
+    #[test]
+    fn leading_block_chars_are_escaped() {
+        assert_eq!(normalize_inline("\\- dash first"), "\\- dash first");
+        assert_eq!(normalize_inline("#x"), "\\#x");
+        assert_eq!(normalize_inline("1\\. not a list"), "1\\. not a list");
+    }
+
+    /// The plaintext projection strips marks and link syntax.
+    #[test]
+    fn strip_removes_markup() {
+        assert_eq!(
+            strip_inline("a **b** *c* ~~d~~ `e` [f](https://x) g"),
+            "a b c d e f g"
+        );
     }
 }

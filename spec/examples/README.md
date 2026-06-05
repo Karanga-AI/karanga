@@ -11,8 +11,8 @@ A single document exercising the full v0.1 surface:
 | Feature | Exercised by |
 |---|---|
 | Sections (heading-as-container) + nesting | `h_over`, `h_meth`, `h_res` (an `h2` nested inside an `h1` section) |
-| Inline marks | `p_intro`: `strong`, a `link` (external), and a `ref` (internal) |
-| Internal link → `links.json` | `p_intro` `ref1` → `links.json` entry → `krg:///h_meth` |
+| Inline content (canonical Karanga Markdown string, §7) | `p_intro`: `**strong**`, an external link, and an internal `krg://` reference |
+| Internal link → `links.json` | `p_intro`'s `krg:///h_meth` link → `links.json` entry |
 | Blockquote as container | `q_note` → `p_note` |
 | Code (raw content) | `c_ex` (`language: go`, with a tab) |
 | Ordered list + **nested** list | `l_bk` → `li_2` → `l_sub` (reversed A2) |

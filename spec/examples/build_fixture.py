@@ -31,64 +31,50 @@ def node_hash(node):
     return "sha256:" + hashlib.sha256(canon(node).encode("utf-8")).hexdigest()
 
 
-def run(text, marks=None):
-    r = {"text": text}
-    if marks:
-        r["marks"] = marks
-    return r
-
-
-# --- nodes -----------------------------------------------------------------
+# --- nodes -------------------------------------------------------------------
+# Inline content is a single string of *canonical* Karanga Markdown inline
+# syntax (format §7): `**strong**`, `*em*`, `~~strike~~`, code spans, links
+# (a `krg://` destination is an internal ref), markup characters escaped.
 NODES = {
     "h_over": {"id": "h_over", "type": "heading", "attrs": {"level": 1},
-               "content": [run("Overview")]},
+               "content": "Overview"},
     "p_intro": {"id": "p_intro", "type": "paragraph",
-                "marks": {
-                    "lnk1": {"type": "link", "href": "https://example.com/gateway"},
-                    "ref1": {"type": "ref", "target": "krg:///h_meth"},
-                },
-                "content": [
-                    run("Retries are capped at "),
-                    run("three attempts", ["strong"]),
-                    run(". See "),
-                    run("the gateway guide", ["lnk1"]),
-                    run(" and the "),
-                    run("Methods", ["ref1"]),
-                    run(" section."),
-                ]},
+                "content": "Retries are capped at **three attempts**. "
+                           "See [the gateway guide](https://example.com/gateway) "
+                           "and the [Methods](krg:///h_meth) section."},
     "q_note": {"id": "q_note", "type": "blockquote"},
     "p_note": {"id": "p_note", "type": "paragraph",
-               "content": [run("Retries are only safe for idempotent requests.")]},
+               "content": "Retries are only safe for idempotent requests."},
 
     "h_meth": {"id": "h_meth", "type": "heading", "attrs": {"level": 1},
-               "content": [run("Methods")]},
+               "content": "Methods"},
     "p_meth": {"id": "p_meth", "type": "paragraph",
-               "content": [run("The backoff schedule is exponential:")]},
+               "content": "The backoff schedule is exponential:"},
     "l_bk": {"id": "l_bk", "type": "list", "attrs": {"ordered": True}},
     "li_1": {"id": "li_1", "type": "list-item"},
     "p_li1": {"id": "p_li1", "type": "paragraph",
-              "content": [run("First retry after 1s.")]},
+              "content": "First retry after 1s."},
     "li_2": {"id": "li_2", "type": "list-item"},
     "p_li2": {"id": "p_li2", "type": "paragraph",
-              "content": [run("Second retry after 2s, then:")]},
+              "content": "Second retry after 2s, then:"},
     "l_sub": {"id": "l_sub", "type": "list", "attrs": {"ordered": False}},
     "li_2a": {"id": "li_2a", "type": "list-item"},
     "p_li2a": {"id": "p_li2a", "type": "paragraph",
-               "content": [run("with full jitter applied.")]},
+               "content": "with full jitter applied."},
     "c_ex": {"id": "c_ex", "type": "code", "attrs": {"language": "go"},
              "content": "func backoff(n int) time.Duration {\n\treturn (1 << n) * time.Second\n}"},
 
     "h_res": {"id": "h_res", "type": "heading", "attrs": {"level": 2},
-              "content": [run("Results")]},
+              "content": "Results"},
     "t_lat": {"id": "t_lat", "type": "table", "attrs": {"align": ["left", "right"]}},
     "tr_h": {"id": "tr_h", "type": "table-row"},
     "tc_h1": {"id": "tc_h1", "type": "table-cell", "attrs": {"header": True},
-              "content": [run("Attempt")]},
+              "content": "Attempt"},
     "tc_h2": {"id": "tc_h2", "type": "table-cell", "attrs": {"header": True},
-              "content": [run("Delay")]},
+              "content": "Delay"},
     "tr_1": {"id": "tr_1", "type": "table-row"},
-    "tc_11": {"id": "tc_11", "type": "table-cell", "content": [run("1")]},
-    "tc_12": {"id": "tc_12", "type": "table-cell", "content": [run("1s")]},
+    "tc_11": {"id": "tc_11", "type": "table-cell", "content": "1"},
+    "tc_12": {"id": "tc_12", "type": "table-cell", "content": "1s"},
     "m_graph": {"id": "m_graph", "type": "media",
                 "attrs": {"media_kind": "image", "asset": "latency",
                           "alt": "p95 latency by attempt",
@@ -96,7 +82,7 @@ NODES = {
     "d_div": {"id": "d_div", "type": "divider"},
     "cl_warn": {"id": "cl_warn", "type": "acme:callout", "attrs": {"variant": "warn"}},
     "p_warn": {"id": "p_warn", "type": "paragraph",
-               "content": [run("Never retry on 4xx responses.")]},
+               "content": "Never retry on 4xx responses."},
 }
 
 # --- spine skeleton (reading order; nesting = containment) ------------------
@@ -149,8 +135,10 @@ PNG = base64.b64decode(
 
 
 def label_of(node):
+    # Spine label = the heading's plaintext. The fixture's headings carry no
+    # inline markup, so the stored string is already plain.
     if node["type"] == "heading":
-        return "".join(r["text"] for r in node["content"])
+        return node["content"]
     return None
 
 

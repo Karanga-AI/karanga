@@ -141,7 +141,8 @@ create_document(title: string, description?: string, at?: path)
 insert_node(doc: ref, node: { type, content, attrs? }, at: position)
   → { ref, rev }
       // position = { parent?: ref, after?: ref } | { parent?: ref, index?: int }
-      // content is sent as Markdown/plain text; the engine parses it into runs/marks.
+      // content is sent as Markdown/plain text; the engine normalizes it to the
+      // canonical inline form (format §7.2) before storing.
 
 update_node(node: ref, change: { content?, attrs? }, rev: token)
   → { ref, rev }  |  { conflict: "stale", current_rev, current: <rendered> }
@@ -221,9 +222,11 @@ The CLI and MCP server are thin renderings of the same operations over `krg-core
 
 Both directions of the text interface use one dialect. The **read projection** renders nodes
 to it (§3.3/§3.4), and **authoring** parses it back (`insert_node`/`update_node` content, §4).
-It is a strict **profile of CommonMark**, chosen so every construct maps 1:1 to the node/mark
-vocabulary — which is what makes render → parse → render **semantically lossless** (same nodes
-and marks out as in; not necessarily byte-identical).
+It is a strict **profile of CommonMark**, chosen so every construct maps 1:1 to the node
+vocabulary — which is what makes render → parse → render **semantically lossless**. Inline
+content is *stored* in this dialect's canonical inline form (format §7), so for inline
+content the round-trip is **byte-identical** by construction; block structure round-trips
+semantically (same nodes out as in).
 
 ### 8.1 Block constructs
 
@@ -250,18 +253,21 @@ and marks out as in; not necessarily byte-identical).
 
 ### 8.2 Inline constructs (within text-bearing nodes)
 
-| Karanga Markdown | Mark (format §7) |
+Inline content is stored verbatim in the canonical inline form (format §7), so the inline
+constructs below pass through storage unchanged:
+
+| Karanga Markdown | Meaning (format §7.1) |
 |---|---|
-| `**text**` | `strong` |
-| `*text*` | `em` |
-| `` `text` `` | `code` |
-| `~~text~~` | `strike` |
-| `[text](https://…)` | parametric `link` (`href`) |
-| `[text](krg://<doc>/<node>)` | parametric `ref` (internal link; mirrored to `links.json`) |
+| `**text**` | strong |
+| `*text*` | em |
+| `` `text` `` | code |
+| `~~text~~` | strike |
+| `[text](https://…)` | external link |
+| `[text](krg://<doc>/<node>)` | internal reference (mirrored to `links.json`) |
 
 - **Internal references use ordinary link syntax with a `krg://` href** — there is no custom
   `[[wiki]]` syntax, so the dialect stays pure CommonMark. A link whose href parses as a
-  `krg://` URI becomes a `ref`; any other href becomes a `link`.
+  `krg://` URI is an internal reference; any other href is an external link.
 - Inline HTML, autolinks, and reference-style (`[id]: url`) link definitions are **not** part
   of the dialect.
 
@@ -274,7 +280,8 @@ unless the target is a container node — keeping the structural effect of an ed
 
 ### 8.4 Conformance
 
-- Render output MUST be parseable back to the originating nodes/marks (semantic round-trip).
+- Render output MUST be parseable back to the originating nodes (semantic round-trip;
+  byte-identical for inline content, format §7.2).
 - Authoring input outside this profile MUST be **rejected with a diagnostic** (never silently
   coerced), so the resulting structure is deterministic.
 - Implementations parse with a CommonMark parser (reference: `pulldown-cmark`) restricted to the
@@ -296,8 +303,10 @@ Body blocks go here — parsed as the directive type's children.
   `{…}` carries `attrs` (no-float domain). The fenced body is parsed as the type's child blocks.
 - Rendering is the inverse: a declared custom container renders back to its directive form;
   a client that knows the type MAY render it natively instead.
-- Custom **inline** types beyond the base marks are out of scope for the v0.1 dialect; such
-  content is authored structurally, not through text. **[D]**
+- Custom **inline** constructs beyond the base inline syntax (format §7.1) are out of scope
+  for the v0.1 dialect — and, since inline content is stored *as* the dialect (format §7),
+  out of scope for the v0.1 format: a future inline extension means extending the dialect
+  (e.g. a `[span]{.role}` attribute syntax) in a `MINOR` revision. **[D]**
 
 ## 9. Open questions
 

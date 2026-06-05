@@ -1,9 +1,5 @@
 {
   "id": "p_li2a",
   "type": "paragraph",
-  "content": [
-    {
-      "text": "with full jitter applied."
-    }
-  ]
+  "content": "with full jitter applied."
 }

@@ -4,9 +4,5 @@
   "attrs": {
     "level": 1
   },
-  "content": [
-    {
-      "text": "Overview"
-    }
-  ]
+  "content": "Overview"
 }

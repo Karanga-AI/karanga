@@ -32,11 +32,11 @@ krg-convert ─┘   (+ optional Tantivy index, feature-gated)
 | Module | Responsibility |
 |---|---|
 | `container` | ZIP pack/unpack, exploded-dir I/O, compression policy (manifest `STORE`), random-access single-entry extraction, atomic part writes, the `Store` abstraction (§4). |
-| `model` | Types: `Document`, `Manifest`, `Spine`, `Node`, `NodeContent`, inline `Run`/`Mark`, `Link`, `Media`. Serde to/from JSON parts. |
+| `model` | Types: `Document`, `Manifest`, `Spine`, `Node` (content = an optional string, format §6–§7), `Link`, `Media`. Serde to/from JSON parts. |
 | `schema` | The base-schema type descriptors + the document `types` registry (format §6.2–§6.4); resolves a type's content model and child rules. The engine is **schema-driven** — `validate`, `render`, and `edit` consult it rather than matching a fixed type enum. |
 | `id` | `doc_id`/`node_id`/`asset_id` generation; `krg://` ref parse/format. |
 | `hash` | RFC 8785 canonical JSON + SHA-256; `Rev` derivation (12-hex truncation). |
-| `render` | Schema-driven projection: rich render for known types, **generic structural render by content model** for declared custom types (read side); Karanga Markdown → `Run`/`Mark`/children (write side). |
+| `render` | Schema-driven projection: rich render for known types, **generic structural render by content model** for declared custom types (read side); Karanga Markdown → block tree + the canonical inline normalizer (format §7.2) (write side). |
 | `query` | Read verbs: `find_documents`, `get_outline`, `get_node`, `get_section`, `find_nodes`, `search`, `get_links`. |
 | `edit` | Write verbs with CAS: create/insert/update/move/delete, link + media ops; spine/links projection maintenance; repack. |
 | `validate` | Conformance checks (format §11). |
@@ -53,7 +53,7 @@ pub struct Scope(PathBuf);       // a file or a directory (recursive)
 pub struct Node {
     pub id: NodeId,
     pub ty: TypeName,            // base ("heading", "table") or namespaced custom ("acme:callout")
-    pub content: NodeContent,    // Inline(Vec<Run>) | Raw(String) | Empty  — kind set by the type's descriptor
+    pub content: Option<String>, // canonical inline markdown | raw string | absent — interpretation set by the type's descriptor
     pub attrs: Map,
     pub ext: Map,                // the `x` bag, preserved verbatim
 }
@@ -169,11 +169,12 @@ write verb ─► ensure DirStore (explode if packed)
 - **Atomic part write:** temp file + `fsync` + atomic `rename` on the exploded dir. The CAS
   check (re-hash current vs supplied `rev`) happens immediately before the rename.
 - **Projection upkeep:** every node write updates that node's spine entry (`type`/`hash`/
-  `label`) so the index stays consistent (format §5.2). Inline `ref` marks are mirrored into
-  `links.json` (format §7.2/§8.3).
+  `label`) so the index stays consistent (format §5.2). Inline `krg://` links are mirrored
+  into `links.json` (format §7.1/§8.3).
 - **Authoring inverse:** `insert_node`/`update_node` accept content in **Karanga Markdown**
-  (the CommonMark subset, interface spec §8); `render` parses it into `Run`/`Mark`. Render and
-  parse are semantic inverses, so the read projection round-trips (C-e, resolved).
+  (the CommonMark subset, interface spec §8); `render` normalizes inline content to the
+  canonical form (format §7.2) and stores it verbatim — for inline content the round-trip is
+  byte-identical by construction (C-e, resolved).
 
 ## 7. Search & scope
 
