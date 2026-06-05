@@ -1844,6 +1844,7 @@ name = "karanga-app"
 version = "0.0.0"
 dependencies = [
  "krg-core",
+ "objc2-foundation",
  "serde",
  "tauri",
  "tauri-build",

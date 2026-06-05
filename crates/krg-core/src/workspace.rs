@@ -113,7 +113,7 @@ impl Workspace {
         let node = Node {
             id: NodeId(ulid::Ulid::new().to_string()),
             ty: ty.to_string(),
-            content: build_content(ty, content),
+            content: build_content(ty, content)?,
             attrs,
             ext: BTreeMap::new(),
         };
@@ -184,7 +184,7 @@ impl Workspace {
         let node = Node {
             id: NodeId(id.to_string()),
             ty: old.ty.clone(),
-            content: build_content(&old.ty, content),
+            content: build_content(&old.ty, content)?,
             attrs: old.attrs.clone(),
             ext: old.ext.clone(),
         };
@@ -357,7 +357,7 @@ impl Workspace {
             let node = Node {
                 id: NodeId(id.clone()),
                 ty: b.ty.clone(),
-                content: build_content(&b.ty, &b.content),
+                content: build_content(&b.ty, &b.content)?,
                 attrs: b.attrs,
                 ext: BTreeMap::new(),
             };
@@ -430,13 +430,18 @@ impl Workspace {
 // --- helpers ---------------------------------------------------------------
 
 /// Build a node's stored content from authoring input: inline types are
-/// normalized to the canonical Karanga Markdown form (format §7), `code` is
-/// kept verbatim, containers/divider/media carry no content.
-fn build_content(ty: &str, md: &str) -> Option<String> {
+/// normalized to the canonical inline form (format §7), `table` to the
+/// canonical GFM serialization (§7.4), `code` is kept verbatim, and
+/// containers/divider/media carry no content. Out-of-dialect table input is
+/// rejected (interface §8.4), never coerced.
+fn build_content(ty: &str, md: &str) -> Result<Option<String>> {
     match ty {
-        "code" => Some(md.to_string()),
-        "heading" | "paragraph" | "table-cell" => Some(render::normalize_inline(md)),
-        _ => None,
+        "code" => Ok(Some(md.to_string())),
+        "heading" | "paragraph" => Ok(Some(render::normalize_inline(md))),
+        "table" => render::normalize_table(md)
+            .map(Some)
+            .ok_or_else(|| Error::Invalid("table content must be a single GFM table".into())),
+        _ => Ok(None),
     }
 }
 

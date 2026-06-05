@@ -16,7 +16,7 @@ A single document exercising the full v0.1 surface:
 | Blockquote as container | `q_note` → `p_note` |
 | Code (raw content) | `c_ex` (`language: go`, with a tab) |
 | Ordered list + **nested** list | `l_bk` → `li_2` → `l_sub` (reversed A2) |
-| Table (base-schema) | `t_lat` → `table-row` → `table-cell` (header row + `align`) |
+| Table (base-schema, single node, §7.4) | `t_lat` — content = canonical GFM (header row + alignment in the separator) |
 | Embedded media | `m_graph` → `media/latency.png`, `media_mode: embedded` |
 | Divider | `d_div` |
 | **Custom type via the `types` registry** | `acme:callout` (`cl_warn`), declared in `manifest.types` |

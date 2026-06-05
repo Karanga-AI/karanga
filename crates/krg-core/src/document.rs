@@ -274,7 +274,6 @@ impl Document {
             }
             "blockquote" => out.push(self.render_blockquote(e)?),
             "list" => out.push(self.render_list(e)?),
-            "table" => out.push(self.render_table(e)?),
             "media" => out.push(self.render_media(e)?),
             t if t.contains(':') => out.push(self.render_directive(e)?),
             _ => out.push(render::render_node(&self.read_node(&e.id.0)?)),
@@ -325,43 +324,6 @@ impl Document {
             items.push(md);
         }
         Ok(items.join("\n"))
-    }
-
-    fn render_table(&self, e: &SpineEntry) -> Result<String> {
-        let node = self.read_node(&e.id.0)?;
-        let aligns: Vec<String> = match node.attrs.get("align") {
-            Some(Value::List(l)) => l
-                .iter()
-                .filter_map(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
-                .collect(),
-            _ => Vec::new(),
-        };
-        let mut rows: Vec<Vec<String>> = Vec::new();
-        for row in &e.children {
-            let mut cells = Vec::new();
-            for cell in &row.children {
-                cells.push(render::render_node(&self.read_node(&cell.id.0)?));
-            }
-            rows.push(cells);
-        }
-        if rows.is_empty() {
-            return Ok(String::new());
-        }
-        let ncol = rows[0].len();
-        let mut out = vec![format!("| {} |", rows[0].join(" | "))];
-        let sep: Vec<String> = (0..ncol)
-            .map(|c| match aligns.get(c).map(String::as_str) {
-                Some("left") => ":---".to_string(),
-                Some("center") => ":---:".to_string(),
-                Some("right") => "---:".to_string(),
-                _ => "---".to_string(),
-            })
-            .collect();
-        out.push(format!("| {} |", sep.join(" | ")));
-        for r in &rows[1..] {
-            out.push(format!("| {} |", r.join(" | ")));
-        }
-        Ok(out.join("\n"))
     }
 
     fn render_media(&self, e: &SpineEntry) -> Result<String> {

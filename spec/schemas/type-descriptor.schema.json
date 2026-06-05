@@ -8,8 +8,8 @@
   "additionalProperties": false,
   "properties": {
     "content": {
-      "enum": ["empty", "inline", "raw"],
-      "description": "The node's own payload kind."
+      "enum": ["empty", "inline", "table", "raw"],
+      "description": "The node's own payload kind (format §6.3): none, a canonical inline string (§7), a canonical GFM table serialization (§7.4), or an opaque string."
     },
     "children": {
       "description": "Allowed child types; presence makes the type a container.",

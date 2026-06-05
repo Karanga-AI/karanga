@@ -64,7 +64,23 @@ fn inspect_document(markdown: String) -> Vec<krg_core::tree::InspectNode> {
     krg_core::tree::inspect_markdown(&markdown)
 }
 
+/// Disable macOS "smart" dash/quote substitution inside the WKWebView.
+/// WebKit's text checker reads these per-app `NSUserDefaults` keys (the same
+/// ones Safari's Edit → Substitutions menu persists); they must be set before
+/// the webview is created. System-level substitution would otherwise rewrite
+/// the markdown the user types (`---` → em-dash, straight → curly quotes).
+#[cfg(target_os = "macos")]
+fn disable_smart_substitutions() {
+    use objc2_foundation::{ns_string, NSUserDefaults};
+    let defaults = NSUserDefaults::standardUserDefaults();
+    defaults.setBool_forKey(false, ns_string!("WebAutomaticDashSubstitutionEnabled"));
+    defaults.setBool_forKey(false, ns_string!("WebAutomaticQuoteSubstitutionEnabled"));
+}
+
 fn main() {
+    #[cfg(target_os = "macos")]
+    disable_smart_substitutions();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![

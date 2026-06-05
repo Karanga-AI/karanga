@@ -71,6 +71,50 @@ fn insert_markdown_builds_structure() {
 }
 
 #[test]
+fn table_round_trips_through_markdown() {
+    let md = "\
+| Attempt | Delay |
+| :--- | ---: |
+| 1 | 1s |
+| 2 | 2s \\| jitter |
+";
+    let work = scratch("tbl-work");
+    let mut ws = Workspace::create(&work, "Tables", None).unwrap();
+    ws.insert_markdown(Place::Root, md).unwrap();
+
+    let krg = scratch("tbl").with_extension("krg");
+    ws.save(&krg).unwrap();
+    let doc = Document::open(&krg).unwrap();
+    assert!(doc.validate().unwrap().is_empty(), "{:#?}", doc.validate());
+
+    // One single table node — content is the canonical GFM serialization.
+    assert_eq!(doc.find_nodes(Some("table")).len(), 1);
+    assert_eq!(doc.find_nodes(None).len(), 1);
+
+    // Render reproduces the GFM table: header row, align spec, escaped pipe.
+    let rendered = doc.render().unwrap();
+    assert!(rendered.contains("| Attempt | Delay |"), "{rendered}");
+    assert!(rendered.contains("| :--- | ---: |"), "{rendered}");
+    assert!(rendered.contains("| 2 | 2s \\| jitter |"), "{rendered}");
+
+    // Round trip: importing the render again yields the same table shape.
+    let work2 = scratch("tbl-work2");
+    let mut ws2 = Workspace::create(&work2, "Tables2", None).unwrap();
+    ws2.insert_markdown(Place::Root, &rendered).unwrap();
+    let krg2 = scratch("tbl2").with_extension("krg");
+    ws2.save(&krg2).unwrap();
+    let doc2 = Document::open(&krg2).unwrap();
+    assert_eq!(doc2.render().unwrap(), rendered);
+
+    for p in [&work, &work2] {
+        let _ = std::fs::remove_dir_all(p);
+    }
+    for f in [&krg, &krg2] {
+        let _ = std::fs::remove_file(f);
+    }
+}
+
+#[test]
 fn inspect_reports_node_config() {
     let tree = krg_core::tree::inspect_markdown("# Title\n\nhello **world**\n");
     assert_eq!(tree.len(), 1);

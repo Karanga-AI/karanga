@@ -417,7 +417,7 @@ fn split(args: &[String]) -> (Vec<String>, BTreeMap<String, String>, BTreeSet<St
 }
 
 fn needs_content(ty: &str) -> bool {
-    matches!(ty, "heading" | "paragraph" | "table-cell" | "code")
+    matches!(ty, "heading" | "paragraph" | "table" | "code")
 }
 
 fn read_stdin() -> Result<String> {

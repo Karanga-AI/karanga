@@ -237,7 +237,7 @@ semantically (same nodes out as in).
 | `> …` (may contain multiple blocks) | `blockquote` → block children |
 | ` ```lang … ``` ` (fenced) | `code` (`attrs.language`) |
 | `- ` / `* ` (bullets), `1. ` (ordered); **nestable** | `list` (`attrs.ordered`) → `list-item` → block children |
-| GFM table (`\| a \| b \|` + `\|---\|---\|`) | `table` → `table-row` → `table-cell` (header row → `attrs.header`; `:---:` → `attrs.align`) |
+| GFM table (`\| a \| b \|` + `\|---\|---\|`) | a single `table` node — content = the canonical GFM serialization (format §7.4) |
 | `---` / `***` (thematic break) | `divider` |
 | `![alt](src)` as a standalone block | `media` |
 | `:::type{attrs} … :::` (directive) | a **custom** block type declared in `types` (§8.5) |

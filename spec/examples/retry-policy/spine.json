@@ -100,43 +100,7 @@
             {
               "id": "t_lat",
               "type": "table",
-              "hash": "sha256:9c9002ec3fb7f90c4083526a1a4f1037b7caaa3a30181a533788bbb162421c38",
-              "children": [
-                {
-                  "id": "tr_h",
-                  "type": "table-row",
-                  "hash": "sha256:46ab2b718facc6045e31a2750e2d18f8c75a5adde6824830823e8e786b559013",
-                  "children": [
-                    {
-                      "id": "tc_h1",
-                      "type": "table-cell",
-                      "hash": "sha256:18d015b28efd988beba99609389969c45449a2a3c55386fd846b409f09f15017"
-                    },
-                    {
-                      "id": "tc_h2",
-                      "type": "table-cell",
-                      "hash": "sha256:9c1ad68600e37d14e3ff98eb310df6ab37fa025f753b60f96a4e650d5baebd3c"
-                    }
-                  ]
-                },
-                {
-                  "id": "tr_1",
-                  "type": "table-row",
-                  "hash": "sha256:cdc46b3fadd902e732ad3cc2ab1a4d45a17a1277852a5aca32d2eabc8f87510b",
-                  "children": [
-                    {
-                      "id": "tc_11",
-                      "type": "table-cell",
-                      "hash": "sha256:9d4b4a9b7daecb05dc106bd530bfd4d0a20427643da3dd16187e7fe96efc475f"
-                    },
-                    {
-                      "id": "tc_12",
-                      "type": "table-cell",
-                      "hash": "sha256:fd7602876f5e581e7903a74f8e84dc904a1417cb614b2c99a2ea8b91f013e880"
-                    }
-                  ]
-                }
-              ]
+              "hash": "sha256:f54230bdbb7bf05fa2563c8bfba6d8b9973bc7a71cc8a1b88ab243e86ba7e6eb"
             },
             {
               "id": "m_graph",

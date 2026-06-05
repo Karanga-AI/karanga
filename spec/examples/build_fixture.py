@@ -66,15 +66,10 @@ NODES = {
 
     "h_res": {"id": "h_res", "type": "heading", "attrs": {"level": 2},
               "content": "Results"},
-    "t_lat": {"id": "t_lat", "type": "table", "attrs": {"align": ["left", "right"]}},
-    "tr_h": {"id": "tr_h", "type": "table-row"},
-    "tc_h1": {"id": "tc_h1", "type": "table-cell", "attrs": {"header": True},
-              "content": "Attempt"},
-    "tc_h2": {"id": "tc_h2", "type": "table-cell", "attrs": {"header": True},
-              "content": "Delay"},
-    "tr_1": {"id": "tr_1", "type": "table-row"},
-    "tc_11": {"id": "tc_11", "type": "table-cell", "content": "1"},
-    "tc_12": {"id": "tc_12", "type": "table-cell", "content": "1s"},
+    # A table is a single node: content = the canonical GFM serialization
+    # (format §7.4; header = first row, alignment in the separator row).
+    "t_lat": {"id": "t_lat", "type": "table",
+              "content": "| Attempt | Delay |\n| :--- | ---: |\n| 1 | 1s |"},
     "m_graph": {"id": "m_graph", "type": "media",
                 "attrs": {"media_kind": "image", "asset": "latency",
                           "alt": "p95 latency by attempt",
@@ -96,10 +91,7 @@ SKELETON = [
         ]),
         ("c_ex", []),
         ("h_res", [
-            ("t_lat", [
-                ("tr_h", [("tc_h1", []), ("tc_h2", [])]),
-                ("tr_1", [("tc_11", []), ("tc_12", [])]),
-            ]),
+            ("t_lat", []),
             ("m_graph", []),
             ("d_div", []),
             ("cl_warn", [("p_warn", [])]),
@@ -162,7 +154,10 @@ def write_json(path, obj):
 
 
 def main():
-    # exploded form
+    # exploded form — clear nodes/ first so removed nodes don't survive as
+    # orphan parts (validate would flag them)
+    import shutil
+    shutil.rmtree(os.path.join(OUT, "nodes"), ignore_errors=True)
     os.makedirs(OUT, exist_ok=True)
     with open(os.path.join(OUT, "mimetype"), "w", encoding="utf-8") as f:
         f.write(MIMETYPE)  # no trailing newline

@@ -254,9 +254,7 @@ the base schema; additional types are namespaced and document-declared (§6.4).
 | `code` | raw | — | `{ "language"?: string }` |
 | `list` | empty | `list-item` | `{ "ordered": bool }` |
 | `list-item` | empty | `block` | — |
-| `table` | empty | `table-row` | `{ "align"?: ("left"\|"center"\|"right")[] }` |
-| `table-row` | empty | `table-cell` | — |
-| `table-cell` | inline | — | `{ "header"?: bool }` |
+| `table` | table | — | — |
 | `media` | empty | — | `{ "media_kind", "asset"\|"src", "alt"?, "caption"? }` (§8) |
 | `divider` | empty | — | — |
 
@@ -282,7 +280,8 @@ A descriptor declares a type's shape:
 ```
 
 - **`content`** — the node's own payload: `empty` (none), `inline` (a canonical Karanga
-  Markdown inline string, §7), or `raw` (an opaque string, e.g. code).
+  Markdown inline string, §7), `table` (a canonical GFM table serialization, §7.4), or
+  `raw` (an opaque string, e.g. code).
 - **`children`** — allowed child types (a list, or the `block` shorthand). Present ⇒ the type is
   a container. A type MAY be *both* inline-content and a container (e.g. `heading`: an inline
   title plus a block section).
@@ -320,9 +319,9 @@ The vocabulary is open. A document MAY use types beyond the base schema; each su
 
 ## 7. Inline content model
 
-Nodes whose content model is `inline` (`heading`, `paragraph`, `table-cell`, and any custom
-inline type) carry `content` as a single string of **canonical Karanga Markdown inline
-syntax** (the inline subset of the dialect, interface §8).
+Nodes whose content model is `inline` (`heading`, `paragraph`, and any custom inline type)
+carry `content` as a single string of **canonical Karanga Markdown inline syntax** (the
+inline subset of the dialect, interface §8).
 
 ```json
 "content": "Retries are capped at **three attempts**. See [the gateway doc](https://example.com/gateway)."
@@ -365,6 +364,31 @@ dialect's grammar, then re-emit):
 The **plain text** of a node is its content with markup stripped (parse, concatenate text).
 Agents reading for content **SHOULD** use this projection — it is markup-free prose. The
 spine `label` of a heading (§5.2) is its plain text.
+
+### 7.4 Table content
+
+A `table` node carries its **entire table** as one `content` string: the **canonical GFM
+serialization**. *(Supersedes the structural `table` → `table-row` → `table-cell` model,
+2026-06-04: per-cell nodes cost ~30× the content size in parts + spine entries — each entry
+carries an id and hash — and cell-level addressing was unusable in practice since cells are
+unlabeled in the spine. GFM already encodes everything the structural attrs did.)*
+
+```json
+{ "id": "t_lat", "type": "table",
+  "content": "| Attempt | Delay |\n| :--- | ---: |\n| 1 | 1s |" }
+```
+
+- The **first row is the header**; **column alignment** lives in the separator row
+  (`---` / `:---` / `:---:` / `---:`). There are no table attrs — GFM is self-describing.
+- Cells contain canonical **inline** syntax (§7.1–§7.2); a literal `|` in a cell is
+  backslash-escaped. Cells are single-line (no block content — unchanged from the
+  structural model).
+- **Canonical form**: `| a | b |` single-space padding, one separator row, escaped pipes,
+  cells individually in inline canonical form. As with §7.2, writers MUST store the output
+  of the normative normalizer (parse the GFM table, re-emit); normalization is idempotent.
+- Inline `krg://` links inside cells follow §7.1 (mirrored to `links.json`).
+- The plain text of a table is its cells' plain text in reading order, space-separated
+  (pipes and the separator row are not text).
 
 ## 8. Media
 
@@ -484,8 +508,9 @@ design is ratified.
   type system became schema-driven.~~
 - ~~**A3.** ID strategy — *resolved:* UUID `doc_id` + ULID `node_id`. Not content-addressed:
   content-addressed ids change on every edit, which would break stable refs/links (§3).~~
-- ~~**A4.** `table` node type — *resolved (revised):* **included in the v0.1 base schema** as
-  `table`/`table-row`/`table-cell` (§6.2) — expressible because types are schema-defined.
+- ~~**A4.** `table` node type — *resolved (revised twice):* **included in the v0.1 base
+  schema** as a single `table` node carrying its canonical GFM serialization (§7.4); the
+  intermediate structural `table-row`/`table-cell` model was superseded 2026-06-04.
   Supersedes the earlier "defer to v0.2" decision.~~
 - ~~**A7.** Extensible type system — *resolved:* the node-type vocabulary is schema-driven and
   open (§6.2–§6.4): a generic envelope + per-type descriptors + a document `types` registry,

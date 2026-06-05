@@ -19,7 +19,8 @@ pub fn render_node(node: &Node) -> String {
             format!("{} {}", "#".repeat(level), content_str(node))
         }
         "paragraph" => content_str(node).to_string(),
-        "table-cell" => content_str(node).to_string(),
+        // Canonical GFM serialization, stored verbatim (format §7.4).
+        "table" => content_str(node).to_string(),
         "code" => {
             let lang = attr_str(node, "language").unwrap_or("");
             format!("```{lang}\n{}\n```", content_str(node))
@@ -37,7 +38,7 @@ pub fn render_node(node: &Node) -> String {
             format!("![{alt}]({src})")
         }
         t if t.contains(':') => format!(":::{t}\n:::"), // declared custom block type
-        _ => content_str(node).to_string(), // list / list-item / table / table-row → empty own content
+        _ => content_str(node).to_string(), // list / list-item → empty own content
     }
 }
 
@@ -192,20 +193,38 @@ pub fn normalize_inline(md: &str) -> String {
     w.finish()
 }
 
-/// The plaintext projection of inline content (format §7): markup stripped,
-/// breaks collapsed to spaces.
+/// The plaintext projection of stored content (format §7): markup stripped,
+/// breaks collapsed to spaces. Tables are parsed so the pipe/separator syntax
+/// doesn't leak into plaintext (cells are space-separated).
 pub fn strip_inline(md: &str) -> String {
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_STRIKETHROUGH);
+    opts.insert(Options::ENABLE_TABLES);
     let mut s = String::new();
     for ev in Parser::new_ext(md, opts) {
         match ev {
             Event::Text(t) | Event::Code(t) => s.push_str(&t),
             Event::SoftBreak | Event::HardBreak => s.push(' '),
+            Event::Start(Tag::TableCell) | Event::Start(Tag::TableRow) => {
+                if !s.is_empty() && !s.ends_with(' ') {
+                    s.push(' ');
+                }
+            }
             _ => {}
         }
     }
     s
+}
+
+/// Normalize authoring input for a `table` node to the canonical GFM form
+/// (format §7.4): parse, then take the composed serialization. Returns `None`
+/// when the input is not a single GFM table.
+pub fn normalize_table(md: &str) -> Option<String> {
+    let blocks = parse_markdown(md);
+    match blocks.as_slice() {
+        [b] if b.ty == "table" => b.content.clone(),
+        _ => None,
+    }
 }
 
 // === block-level parsing (authoring whole Markdown fragments) ===============
@@ -224,7 +243,7 @@ pub struct Block {
 
 /// Parse a Karanga Markdown fragment into a tree of blocks (interface §8).
 /// Handles headings (with section nesting), paragraphs, code, blockquotes,
-/// lists (nested), and dividers; tables and HTML are skipped for v0.1 import.
+/// lists (nested), GFM tables, and dividers; HTML is skipped for v0.1 import.
 pub fn parse_markdown(md: &str) -> Vec<Block> {
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_STRIKETHROUGH);
@@ -330,7 +349,10 @@ fn block_seq(ev: &[Event], i: &mut usize, ctx: Ctx) -> Vec<Block> {
                             children: items,
                         });
                     }
-                    _ => skip_block(ev, i), // tables / html: skipped for v0.1
+                    Tag::Table(aligns) => {
+                        out.push(parse_table(ev, i, &aligns));
+                    }
+                    _ => skip_block(ev, i), // html: skipped for v0.1
                 }
             }
             // anything else at block position is inline → an implicit paragraph
@@ -345,6 +367,83 @@ fn block_seq(ev: &[Event], i: &mut usize, ctx: Ctx) -> Vec<Block> {
         }
     }
     out
+}
+
+/// Parse a GFM table into a single `table` block whose `content` is the
+/// **canonical GFM serialization** (format §7.4): one node, header row first,
+/// alignment encoded in the separator row, cells in canonical inline form with
+/// literal `|` escaped. The caller has consumed `Start(Table)`; this consumes
+/// through `End(Table)`.
+fn parse_table(ev: &[Event], i: &mut usize, aligns: &[pulldown_cmark::Alignment]) -> Block {
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    while *i < ev.len() {
+        match &ev[*i] {
+            // The header row's cells sit directly inside TableHead.
+            Event::Start(Tag::TableHead) | Event::Start(Tag::TableRow) => {
+                *i += 1;
+                rows.push(table_row_cells(ev, i));
+            }
+            Event::End(TagEnd::Table) => {
+                *i += 1;
+                break;
+            }
+            _ => *i += 1, // ensure progress on anything unexpected
+        }
+    }
+    Block {
+        ty: "table".into(),
+        content: Some(compose_table(&rows, aligns)),
+        attrs: Attrs::new(),
+        children: Vec::new(),
+    }
+}
+
+/// Collect one table row's cell strings through `End(TableHead|TableRow)`.
+fn table_row_cells(ev: &[Event], i: &mut usize) -> Vec<String> {
+    let mut cells = Vec::new();
+    while *i < ev.len() {
+        match &ev[*i] {
+            Event::Start(Tag::TableCell) => {
+                *i += 1;
+                cells.push(collect_inline(ev, i));
+                consume_end(ev, i); // End(TableCell)
+            }
+            Event::End(TagEnd::TableHead) | Event::End(TagEnd::TableRow) => {
+                *i += 1;
+                break;
+            }
+            _ => *i += 1,
+        }
+    }
+    cells
+}
+
+/// Compose rows + alignment into the canonical GFM table form (format §7.4):
+/// `| a | b |` spacing, a `---`/`:---`/`---:`/`:---:` separator after the
+/// header row, literal `|` in cells escaped.
+fn compose_table(rows: &[Vec<String>], aligns: &[pulldown_cmark::Alignment]) -> String {
+    use pulldown_cmark::Alignment;
+    if rows.is_empty() {
+        return String::new();
+    }
+    let line = |cells: &[String]| {
+        let escaped: Vec<String> = cells.iter().map(|c| c.replace('|', "\\|")).collect();
+        format!("| {} |", escaped.join(" | "))
+    };
+    let mut out = vec![line(&rows[0])];
+    let sep: Vec<&str> = (0..rows[0].len())
+        .map(|c| match aligns.get(c) {
+            Some(Alignment::Left) => ":---",
+            Some(Alignment::Center) => ":---:",
+            Some(Alignment::Right) => "---:",
+            _ => "---",
+        })
+        .collect();
+    out.push(format!("| {} |", sep.join(" | ")));
+    for r in &rows[1..] {
+        out.push(line(r));
+    }
+    out.join("\n")
 }
 
 fn list_items(ev: &[Event], i: &mut usize) -> Vec<Block> {

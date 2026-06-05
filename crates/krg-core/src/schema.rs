@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize, Serializer};
 pub enum ContentModel {
     Empty,
     Inline,
+    /// A canonical GFM table serialization (format §7.4).
+    Table,
     Raw,
 }
 
