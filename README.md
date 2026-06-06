@@ -1,4 +1,10 @@
+<div align="center">
+
+<img alt="karanga_logo" src="./docs/karanga_logo.PNG" width="120">
+
 # Karanga
+
+</div align="center">
 
 **A document format and editor built for hybrid human/agent collaboration.**
 
